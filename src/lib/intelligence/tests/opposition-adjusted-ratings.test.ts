@@ -228,7 +228,7 @@ export function runOppositionRatingEngineTests() {
   assert(bumrah.ratings.oppositionAdjustedRating !== undefined, 'oppositionAdjustedRating is present on PlayerRatings');
   assert(bumrah.ratings.competitionAdjustedRating !== undefined, 'competitionAdjustedRating is present on PlayerRatings');
   assert(bumrah.ratings.ratingConfidence !== undefined, 'ratingConfidence is present on PlayerRatings');
-  assert(bumrah.ratings.ratingVersion?.includes('opposition-adjusted'), 'ratingVersion reflects opposition-adjusted engine');
+  assert(Boolean(bumrah.ratings.ratingVersion?.includes('opposition-adjusted')), 'ratingVersion reflects opposition-adjusted engine');
   assert(bumrah.ratings.dataQualityStatus !== undefined, 'dataQualityStatus is populated');
 
   console.log('\n============================================================');

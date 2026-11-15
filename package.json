@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx src/lib/intelligence/tests/player-intelligence.test.ts && tsx src/lib/engines/cpu-gm/tests/cpu-intelligence.test.ts && tsx src/lib/engines/match/tests/match-tournament.test.ts && tsx src/lib/engines/career/tests/career-mode.test.ts && tsx src/lib/engines/tests/global-database.test.ts && tsx src/lib/engines/tests/dynamic-auction-sets.test.ts && tsx src/lib/intelligence/tests/opposition-adjusted-ratings.test.ts",
+    "test": "tsx src/lib/intelligence/tests/player-intelligence.test.ts && tsx src/lib/engines/cpu-gm/tests/cpu-intelligence.test.ts && tsx src/lib/engines/match/tests/match-tournament.test.ts && tsx src/lib/engines/career/tests/career-mode.test.ts && tsx src/lib/engines/tests/global-database.test.ts && tsx src/lib/engines/tests/dynamic-auction-sets.test.ts && tsx src/lib/intelligence/tests/opposition-adjusted-ratings.test.ts && tsx src/lib/engines/tests/retirement-eligibility.test.ts && tsx src/lib/engines/tests/trade-system.test.ts && tsx src/lib/engines/tests/trade-realism.test.ts && tsx src/lib/flow/season-flow.test.ts && tsx src/lib/flow/campaign.test.ts && tsx src/lib/flow/irl-campaign.test.ts && tsx src/lib/engines/tests/auction-market.test.ts && tsx src/lib/engines/tests/dynamic-league.test.ts",
     "benchmark:auction": "tsx scripts/run_auction_evaluation.ts",
     "benchmark:dynasty": "tsx scripts/simulate_10_seasons.ts",
     "calibrate:match": "tsx scripts/calibrate_match_engine.ts",

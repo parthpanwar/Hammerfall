@@ -6,6 +6,7 @@
 
 import type { RegisteredPlayer } from '@/lib/types/registration';
 import type { FranchiseShortlist } from '@/lib/types/scouting';
+import { isPlayerEligibleForAuction } from '../eligibility/auction-eligibility-engine';
 
 export interface AuctionSetDefinition {
   code: string;
@@ -54,12 +55,18 @@ export interface CompilationResult {
 export function compileFinalAuctionPool(
   registrationPool: RegisteredPlayer[],
   shortlists: Record<string, FranchiseShortlist>,
-  targetPoolSize: number = 500
+  targetPoolSize: number = 500,
+  seasonYear: number = 2026
 ): CompilationResult {
-  // 1. Calculate franchise demand score for each registered player
+  // 1. Strictly filter for season-eligible players (excludes complete retirees or banned players)
+  const eligibleRegistrationPool = registrationPool.filter((p) => {
+    return isPlayerEligibleForAuction(p, seasonYear).isEligible;
+  });
+
+  // 2. Calculate franchise demand score for each registered player
   const playerDemandMap: Record<string, { count: number; franchises: string[]; score: number }> = {};
 
-  for (const p of registrationPool) {
+  for (const p of eligibleRegistrationPool) {
     playerDemandMap[p.id] = { count: 0, franchises: [], score: 0 };
   }
 
@@ -80,8 +87,8 @@ export function compileFinalAuctionPool(
     }
   }
 
-  // 2. Score and sort candidates
-  const scoredCandidates = registrationPool.map((p) => {
+  // 3. Score and sort candidates
+  const scoredCandidates = eligibleRegistrationPool.map((p) => {
     const demand = playerDemandMap[p.id] || { count: 0, franchises: [], score: 0 };
     // Base composite score: franchise interest + overall rating + scarcity
     let compositeScore = demand.score * 10.0 + p.ratings.overall * 0.5;
@@ -148,6 +155,16 @@ export function compileFinalAuctionPool(
   const marqueeCandidates = selectedPlayers
     .filter((p) => p.status === 'Capped' && (p.ratings.overall >= 86 || p.basePrice === 200))
     .sort((a, b) => b.ratings.overall - a.ratings.overall);
+  // After retentions the elite tier can be thin; top up so both marquee sets (12 slots) open the auction.
+  if (marqueeCandidates.length < 12) {
+    const taken = new Set(marqueeCandidates.map((p) => p.id));
+    marqueeCandidates.push(
+      ...selectedPlayers
+        .filter((p) => p.status === 'Capped' && !taken.has(p.id))
+        .sort((a, b) => b.ratings.overall - a.ratings.overall)
+        .slice(0, 12 - marqueeCandidates.length)
+    );
+  }
 
   const assignedSetPlayers = new Set<string>();
 

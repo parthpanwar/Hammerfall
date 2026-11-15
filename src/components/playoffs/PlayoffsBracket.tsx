@@ -4,9 +4,12 @@ import React, { useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { simulateFullMatch } from '@/lib/engines/match-engine';
 import { calculateSeasonAwards } from '@/lib/engines/tournament-engine';
-import { Trophy, Play, Award, Sparkles, ArrowRight, Shield } from 'lucide-react';
+import { ArrowRight, Trophy } from 'lucide-react';
+import { MButton, PageHeader, Panel, TeamCrest, LineField, worldVars } from '@/components/mynba/primitives';
 import type { Fixture, MatchResult } from '@/lib/types/game';
-import { getTeamTheme } from '@/lib/theme/team-themes';
+
+/** Match seed; drawn only inside click handlers. */
+const randomSeed = () => Math.random() * 1000000;
 
 export function PlayoffsBracket() {
   const {
@@ -21,15 +24,17 @@ export function PlayoffsBracket() {
     setPhase,
     addSeasonSummary,
     currentSeason,
+    standings,
   } = useGameStore();
 
-  const [champion, setChampion] = useState<string | null>(null);
-  const humanTheme = getTeamTheme(humanFranchiseId);
+  const [justCrowned, setChampion] = useState<string | null>(null);
 
   const q1 = playoffFixtures[0];
   const elim = playoffFixtures[1];
   const q2 = playoffFixtures[2];
   const finalMatch = playoffFixtures[3];
+  // Derived from the saved Final so it survives a reload.
+  const champion = justCrowned ?? (finalMatch?.isCompleted ? finalMatch.result?.winnerId ?? null : null);
 
   const simulatePlayoffMatch = (fixture: Fixture): MatchResult | null => {
     const t1 = franchises.find((f) => f.id === fixture.team1Id);
@@ -39,7 +44,7 @@ export function PlayoffsBracket() {
 
     if (!t1 || !t2 || !xi1 || !xi2) return null;
 
-    const sim = simulateFullMatch(fixture, t1, t2, xi1, xi2, Math.random() * 1000000);
+    const sim = simulateFullMatch(fixture, t1, t2, xi1, xi2, randomSeed());
     return sim.matchResult;
   };
 
@@ -146,6 +151,7 @@ export function PlayoffsBracket() {
     const awards = calculateSeasonAwards(allPlayers, playerSeasonStats);
     setSeasonAwards(awards);
 
+    const myRow = standings.find((r) => r.franchiseId === humanFranchiseId);
     const champTeam = franchises.find((f) => f.id === winner);
     const runnerTeam = franchises.find((f) => f.id === (winner === finalMatch.team1Id ? finalMatch.team2Id : finalMatch.team1Id));
     addSeasonSummary({
@@ -155,9 +161,9 @@ export function PlayoffsBracket() {
       orangeCapPlayer: awards.find((a) => a.type === 'OrangeCap')?.playerName || 'Top Scorer',
       purpleCapPlayer: awards.find((a) => a.type === 'PurpleCap')?.playerName || 'Top Bowler',
       mvpPlayer: awards.find((a) => a.type === 'MVP')?.playerName || 'Tournament MVP',
-      humanFranchisePosition: 1,
-      humanFranchiseWins: 10,
-      humanFranchiseLosses: 4,
+      humanFranchisePosition: myRow?.position ?? Math.max(1, standings.findIndex((r) => r.franchiseId === humanFranchiseId) + 1),
+      humanFranchiseWins: myRow?.won ?? 0,
+      humanFranchiseLosses: myRow?.lost ?? 0,
     });
   };
 
@@ -166,174 +172,90 @@ export function PlayoffsBracket() {
   };
 
   const getTeam = (id?: string) => franchises.find((f) => f.id === id);
+  const nextUp = [q1, elim, q2, finalMatch].find((f) => f && !f.isCompleted);
+
+  const stage = (
+    fixture: Fixture | undefined,
+    title: string,
+    note: string,
+    onSim: () => void,
+    waiting: string
+  ) => {
+    if (!fixture) {
+      return (
+        <div className="rounded-[4px] border border-dashed border-[var(--m-line)] px-5 py-8 text-center text-sm text-[var(--m-faint)]">
+          <div className="m-label mb-1">{title}</div>
+          {waiting}
+        </div>
+      );
+    }
+    const isNext = nextUp?.id === fixture.id;
+    const winner = fixture.result?.winnerId;
+    const side = (id: string) => (
+      <div className={`flex items-center gap-3 min-w-0 ${fixture.isCompleted && winner !== id ? 'opacity-45' : ''}`}>
+        <TeamCrest franchiseId={id} size="sm" />
+        <span className={`truncate ${id === humanFranchiseId ? 'font-semibold' : ''}`}>{getTeam(id)?.name}</span>
+        {winner === id && <Trophy className="w-3.5 h-3.5 text-[var(--m-gold)] shrink-0" />}
+      </div>
+    );
+    return (
+      <Panel title={title} right={<span className="text-xs text-[var(--m-faint)]">{note}</span>}>
+        <div className="space-y-3">
+          {side(fixture.team1Id)}
+          {side(fixture.team2Id)}
+        </div>
+        <div className="mt-4">
+          {fixture.isCompleted && fixture.result ? (
+            <div className="text-sm text-[var(--m-green)]">{fixture.result.winMargin}</div>
+          ) : (
+            <MButton variant={isNext ? 'primary' : 'ghost'} className="w-full" disabled={!isNext} onClick={onSim}>
+              {isNext ? `Simulate ${title}` : 'Waiting for earlier match'}
+            </MButton>
+          )}
+        </div>
+      </Panel>
+    );
+  };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      {/* Top Banner (Neo-Box) */}
-      <div className="neo-box p-5 rounded-2xl bg-zinc-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-400 stroke-[2.5]" />
-            <h2 className="text-xl font-black uppercase text-white tracking-tight">
-              IPL 2026 PLAYOFFS BRACKET
-            </h2>
-          </div>
-          <p className="text-xs text-zinc-300 font-medium mt-1">
-            Top 4 battle through Qualifier 1, Eliminator, and Qualifier 2 to lift the IPL trophy.
-          </p>
-        </div>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <PageHeader
+        kicker={`IPL ${currentSeason} · Knockouts`}
+        title="Playoffs"
+        subtitle="The top two get two chances to reach the Final; third and fourth must win every game. Play them in order."
+        right={
+          champion && (
+            <MButton variant="go" size="lg" onClick={handleProceedToAwards}>
+              Season review <ArrowRight className="w-4 h-4" />
+            </MButton>
+          )
+        }
+      />
 
-        {champion && (
-          <button
-            onClick={handleProceedToAwards}
-            className="neo-btn px-5 py-2.5 rounded-xl font-black text-xs uppercase bg-amber-400 text-black flex items-center gap-2 hover:bg-amber-300"
-          >
-            <span>VIEW SEASON AWARDS CEREMONY</span>
-            <ArrowRight className="w-4 h-4 stroke-[3]" />
-          </button>
-        )}
-      </div>
-
-      {/* Champion Celebration Banner (if Final completed) */}
       {champion && (
-        <div className="neo-box-lg bg-zinc-950 p-8 text-center rounded-3xl relative overflow-hidden border-2 border-black">
-          <div className="neo-badge px-3 py-1 rounded bg-amber-400 text-black text-xs inline-block mb-3">
-            🏆 IPL {currentSeason} CHAMPIONS
+        <div className="relative overflow-hidden border border-[var(--m-ink)] px-6 py-12 text-center bg-[var(--m-bg)] text-[var(--m-text)] shadow-[8px_8px_0_var(--m-ink)]" style={worldVars(champion)}>
+          <div
+            className="absolute inset-0 text-[var(--m-ink)]"
+            style={{ maskImage: 'radial-gradient(ellipse 42% 75% at center, transparent 55%, #000 85%)', WebkitMaskImage: 'radial-gradient(ellipse 42% 75% at center, transparent 55%, #000 85%)' }}
+          >
+            <LineField seed={`${champion}-${currentSeason}`} lines={30} accentEvery={3} className="w-full h-full" />
           </div>
-          <div className="text-4xl sm:text-6xl font-black uppercase text-white my-2 tracking-tight">
-            {getTeam(champion)?.name}
+          <div className="relative">
+            <div className="m-label !text-[var(--m-accent-ink)]">IPL {currentSeason} champions</div>
+            <div className="flex items-center justify-center gap-4 mt-3">
+              <TeamCrest franchiseId={champion} size="lg" />
+              <div className="m-display text-5xl sm:text-6xl">{getTeam(champion)?.name}</div>
+            </div>
+            {finalMatch?.result?.winMargin && <p className="text-sm text-[var(--m-dim)] mt-3">{finalMatch.result.winMargin} in the Final.</p>}
           </div>
-          <p className="text-sm font-bold text-amber-300 max-w-md mx-auto mt-2">
-            {finalMatch?.result?.winMargin} in a historic final at {finalMatch?.venue}!
-          </p>
         </div>
       )}
 
-      {/* Playoff Bracket Nodes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Qualifier 1 */}
-        {q1 && (
-          <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-            <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-zinc-400 mb-3 pb-2 border-b-2 border-black">
-              <span className="text-amber-400">QUALIFIER 1 (#1 VS #2)</span>
-              <span>WINNER ADVANCES TO FINAL</span>
-            </div>
-
-            <div className="flex items-center justify-between my-4">
-              <div className="font-black text-sm text-white">{getTeam(q1.team1Id)?.name}</div>
-              <span className="neo-badge px-1.5 py-0.5 rounded bg-black text-zinc-400 text-[10px]">VS</span>
-              <div className="font-black text-sm text-white">{getTeam(q1.team2Id)?.name}</div>
-            </div>
-
-            {q1.isCompleted && q1.result ? (
-              <div className="neo-box-sm p-2.5 rounded-lg bg-black text-center text-xs font-black text-emerald-400">
-                {q1.result.winMargin}
-              </div>
-            ) : (
-              <button
-                onClick={handleSimulateQ1}
-                className="neo-btn w-full py-2.5 rounded-xl bg-amber-400 text-black font-black text-xs uppercase hover:bg-amber-300"
-              >
-                SIMULATE QUALIFIER 1
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Eliminator */}
-        {elim && (
-          <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-            <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-zinc-400 mb-3 pb-2 border-b-2 border-black">
-              <span className="text-amber-400">ELIMINATOR (#3 VS #4)</span>
-              <span className="text-red-400">LOSER IS ELIMINATED</span>
-            </div>
-
-            <div className="flex items-center justify-between my-4">
-              <div className="font-black text-sm text-white">{getTeam(elim.team1Id)?.name}</div>
-              <span className="neo-badge px-1.5 py-0.5 rounded bg-black text-zinc-400 text-[10px]">VS</span>
-              <div className="font-black text-sm text-white">{getTeam(elim.team2Id)?.name}</div>
-            </div>
-
-            {elim.isCompleted && elim.result ? (
-              <div className="neo-box-sm p-2.5 rounded-lg bg-black text-center text-xs font-black text-emerald-400">
-                {elim.result.winMargin}
-              </div>
-            ) : (
-              <button
-                onClick={handleSimulateEliminator}
-                className="neo-btn w-full py-2.5 rounded-xl bg-amber-400 text-black font-black text-xs uppercase hover:bg-amber-300"
-              >
-                SIMULATE ELIMINATOR
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Qualifier 2 */}
-        {q2 ? (
-          <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-            <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-zinc-400 mb-3 pb-2 border-b-2 border-black">
-              <span className="text-amber-400">QUALIFIER 2</span>
-              <span>LOSER Q1 VS WINNER ELIMINATOR</span>
-            </div>
-
-            <div className="flex items-center justify-between my-4">
-              <div className="font-black text-sm text-white">{getTeam(q2.team1Id)?.name}</div>
-              <span className="neo-badge px-1.5 py-0.5 rounded bg-black text-zinc-400 text-[10px]">VS</span>
-              <div className="font-black text-sm text-white">{getTeam(q2.team2Id)?.name}</div>
-            </div>
-
-            {q2.isCompleted && q2.result ? (
-              <div className="neo-box-sm p-2.5 rounded-lg bg-black text-center text-xs font-black text-emerald-400">
-                {q2.result.winMargin}
-              </div>
-            ) : (
-              <button
-                onClick={handleSimulateQ2}
-                className="neo-btn w-full py-2.5 rounded-xl bg-amber-400 text-black font-black text-xs uppercase hover:bg-amber-300"
-              >
-                SIMULATE QUALIFIER 2
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="neo-box p-8 rounded-2xl bg-zinc-950 text-center text-xs text-zinc-400 font-bold flex items-center justify-center">
-            Awaiting outcome of Qualifier 1 & Eliminator
-          </div>
-        )}
-
-        {/* Grand Final */}
-        {finalMatch ? (
-          <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-            <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-zinc-400 mb-3 pb-2 border-b-2 border-black">
-              <span className="text-amber-400">IPL GRAND FINAL</span>
-              <span>WINNER Q1 VS WINNER Q2</span>
-            </div>
-
-            <div className="flex items-center justify-between my-4">
-              <div className="font-black text-base text-white">{getTeam(finalMatch.team1Id)?.name}</div>
-              <span className="text-sm">🏆</span>
-              <div className="font-black text-base text-white">{getTeam(finalMatch.team2Id)?.name}</div>
-            </div>
-
-            {finalMatch.isCompleted && finalMatch.result ? (
-              <div className="neo-box-sm p-2.5 rounded-lg bg-black text-center text-xs font-black text-emerald-400">
-                {finalMatch.result.winMargin}
-              </div>
-            ) : (
-              <button
-                onClick={handleSimulateFinal}
-                className="neo-btn w-full py-3.5 rounded-xl bg-amber-400 text-black font-black text-xs uppercase hover:bg-amber-300"
-              >
-                SIMULATE GRAND FINAL
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="neo-box p-8 rounded-2xl bg-zinc-950 text-center text-xs text-zinc-400 font-bold flex items-center justify-center">
-            Awaiting Qualifier 2 winner
-          </div>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {stage(q1, 'Qualifier 1', '1st v 2nd · winner to the Final', handleSimulateQ1, '')}
+        {stage(elim, 'Eliminator', '3rd v 4th · loser is out', handleSimulateEliminator, '')}
+        {stage(q2, 'Qualifier 2', 'Q1 loser v Eliminator winner', handleSimulateQ2, 'Decided by Qualifier 1 and the Eliminator.')}
+        {stage(finalMatch, 'Final', 'Q1 winner v Q2 winner', handleSimulateFinal, 'Decided by Qualifier 2.')}
       </div>
     </div>
   );

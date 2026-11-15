@@ -1,108 +1,582 @@
 @import "tailwindcss";
 
+/* ============================================================
+   IPL DYNASTY — Editorial design system (Peabody House-inspired)
+   Warm paper, ink hairlines, a light condensed serif for headlines and a
+   clean grotesk for data. Every franchise has its own "world" — paper, ink
+   and jersey accents — written onto <html> by worldTokens() in
+   src/lib/theme/team-themes.ts. The values below are the neutral house
+   world used before a franchise is chosen.
+   ============================================================ */
+
 :root {
-  --background: #0d0f12;
-  --foreground: #f4f4f5;
-  --border-neo: #000000;
-  --shadow-neo: #000000;
-  
-  /* Team dynamic tokens (default to MI blue) */
-  --team-primary: #004BA0;
-  --team-secondary: #D1AB3E;
-  --team-accent: #00D4FF;
-  --team-surface: #040d1a;
-  --team-card: #08172e;
-  --team-card-header: #004BA0;
-  --team-text-light: #FFFFFF;
-  --team-text-dark: #040d1a;
-  --team-badge-bg: #D1AB3E;
-  --team-badge-text: #040d1a;
+  --m-bg: #faf6f3;
+  --m-panel: #fcfaf8;
+  --m-panel-2: #fcfaf8;
+  --m-raised: #f2eeeb;
+  --m-line: #e0dad6;
+  --m-line-strong: #c6bfbb;
+  --m-text: #26211e;
+  --m-ink: #26211e;
+  --m-dim: #6b6460;
+  --m-faint: #918a86;
+  --m-accent: #c8553d;
+  --m-on-accent: #ffffff;
+  --m-accent-ink: #c8553d;
+  --m-accent-2: #3e6e8e;
+  --m-accent-2-ink: #3e6e8e;
+  --m-gold: #a07107;
+  --m-green: #1c7a4f;
+  --m-red: #c0303a;
+  --m-cyan: #1f6fa0;
+  --m-purple: #6b4bc4;
+  --m-orange: #c2561a;
+
+  --team-primary: var(--m-accent);
+  --team-secondary: var(--m-accent-2);
+  --team-on-primary: var(--m-on-accent);
+  --team-ink: var(--m-accent-ink);
+
+  /* Legacy aliases (older components) */
+  --background: var(--m-bg);
+  --foreground: var(--m-text);
+  --surface-secondary: var(--m-panel);
+  --surface-elevated: var(--m-raised);
+  --border-subtle: var(--m-line);
+  --accent-primary: var(--m-accent-ink);
+  --accent-positive: var(--m-green);
+  --accent-warning: var(--m-gold);
+  --accent-urgent: var(--m-red);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--m-ink);
+  --color-paper: var(--m-bg);
+  --color-accent: var(--m-accent);
+  --color-background: var(--m-bg);
+  --color-foreground: var(--m-text);
+  --color-surface-sec: var(--m-panel);
+  --color-surface-elev: var(--m-raised);
+  --color-border-subtle: var(--m-line);
+  --color-accent-blue: var(--m-accent-ink);
+  --color-accent-green: var(--m-green);
+  --color-accent-yellow: var(--m-gold);
+  --color-accent-red: var(--m-red);
+}
+
+html {
+  background-color: var(--m-bg);
+  transition: background-color 0.45s var(--ease-out);
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-image: 
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
-  background-size: 24px 24px;
+  background-color: var(--m-bg);
+  color: var(--m-text);
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  min-height: 100vh;
+  transition: background-color 0.45s var(--ease-out), color 0.45s var(--ease-out);
 }
 
-/* Neo-Brutalist Core Styles */
-.neo-box {
-  border: 2.5px solid #000000;
-  box-shadow: 4px 4px 0px #000000;
-  transition: all 0.15s ease-in-out;
+::selection {
+  background: var(--m-accent);
+  color: var(--m-on-accent);
 }
 
-.neo-box-sm {
-  border: 2px solid #000000;
-  box-shadow: 2.5px 2.5px 0px #000000;
-  transition: all 0.15s ease-in-out;
+/* ============================================================
+   Typography
+   ============================================================ */
+
+/* Headline serif: always the light roman cut, whatever weight/italic
+   utilities a component asks for (unlayered rules beat Tailwind utilities). */
+.font-display,
+.m-display {
+  font-family: var(--font-display), "Times New Roman", serif;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+}
+.font-display {
+  text-transform: none;
+  letter-spacing: -0.005em;
+}
+.m-display {
+  text-transform: none;
+  letter-spacing: -0.015em;
+  line-height: 0.98;
+}
+.font-num {
+  font-family: var(--font-mono-num), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
-.neo-box-lg {
-  border: 3px solid #000000;
-  box-shadow: 6px 6px 0px #000000;
-  transition: all 0.15s ease-in-out;
+.m-label {
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.005em;
+  text-transform: none;
+  color: var(--m-dim);
 }
 
-.neo-btn {
-  border: 2.5px solid #000000;
-  box-shadow: 3.5px 3.5px 0px #000000;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-  cursor: pointer;
+/* "View the work ——→" editorial link */
+.m-arrow-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--m-text);
+}
+.m-arrow-link::after {
+  content: "";
+  width: 3rem;
+  height: 1px;
+  background: currentColor;
+  transition: width 0.3s var(--ease-out);
+  mask: linear-gradient(90deg, #000 calc(100% - 6px), transparent 0);
+}
+.m-arrow-link:hover::after {
+  width: 4.5rem;
 }
 
-.neo-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 5px 5px 0px #000000;
-}
-
-.neo-btn:active:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0px #000000;
-}
-
-.neo-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* ============================================================
+   Surfaces
+   ============================================================ */
+.m-panel,
+.terminal-card,
+.terminal-card-sm,
+.terminal-card-elevated,
+.neo-box,
+.neo-box-sm,
+.neo-box-lg,
+.neo-box-xl {
+  background: var(--m-panel);
+  border: 1px solid var(--m-ink);
+  border-radius: 0;
   box-shadow: none;
-  transform: none;
+  transition: background-color 0.45s var(--ease-out), border-color 0.45s var(--ease-out);
 }
 
-.neo-badge {
-  border: 1.5px solid #000000;
-  box-shadow: 1.5px 1.5px 0px #000000;
-  font-weight: 800;
+.m-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--m-ink);
+  position: relative;
+}
+.m-panel-head::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--team-primary);
+  box-shadow: 0 0 0 1px var(--m-ink);
+  flex-shrink: 0;
+  order: -1;
+}
+.m-panel-head > :first-child {
+  margin-right: auto;
+}
+
+/* Fine contour lines (replaces the old diagonal speed stripes) */
+.m-slash {
+  background-image: repeating-linear-gradient(
+    0deg,
+    color-mix(in srgb, currentColor 7%, transparent) 0 1px,
+    transparent 1px 9px
+  );
+}
+
+/* ============================================================
+   Buttons — pill outlines, ink fills
+   ============================================================ */
+.m-btn,
+.sports-btn,
+.neo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.85rem;
+  padding: 0.5rem 1.05rem;
+  border-radius: 999px;
+  border: 1px solid var(--m-ink);
+  background: transparent;
+  color: var(--m-text);
+  transition: transform 0.12s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.m-btn:hover:not(:disabled),
+.sports-btn:hover:not(:disabled),
+.neo-btn:hover:not(:disabled) {
+  background: var(--m-raised);
+}
+.m-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.m-btn:focus-visible {
+  outline: 2px solid var(--m-accent-ink);
+  outline-offset: 2px;
+}
+.m-btn:disabled,
+.sports-btn:disabled,
+.neo-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.m-btn-primary {
+  background: var(--m-ink);
+  color: var(--m-bg);
+  border-color: var(--m-ink);
+}
+.m-btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--m-ink) 86%, var(--m-bg));
+}
+.m-btn-team {
+  background: var(--team-primary);
+  border-color: var(--m-ink);
+  color: var(--team-on-primary, #fff);
+}
+.m-btn-team:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--team-primary) 86%, var(--m-ink));
+}
+.m-btn-go {
+  background: var(--m-green);
+  border-color: var(--m-green);
+  color: #fff;
+}
+.m-btn-go:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--m-green) 85%, #000);
+}
+.m-btn-danger {
+  background: transparent;
+  border-color: var(--m-red);
+  color: var(--m-red);
+}
+.m-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--m-red) 8%, transparent);
+}
+.m-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--m-dim);
+}
+.m-btn-ghost:hover:not(:disabled) {
+  color: var(--m-text);
+  background: var(--m-raised);
+}
+.m-btn-sm {
+  font-size: 0.76rem;
+  padding: 0.32rem 0.75rem;
+}
+.m-btn-lg {
+  font-size: 0.95rem;
+  padding: 0.7rem 1.4rem;
+}
+.m-btn-xl {
+  font-size: 1.1rem;
+  padding: 0.9rem 1.8rem;
+}
+
+/* ============================================================
+   Tiles, chips, tabs
+   ============================================================ */
+.m-tile {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--m-line-strong);
+  border-radius: 0;
+  background: var(--m-panel);
+  text-align: left;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s var(--ease-out);
+}
+.m-tile:hover {
+  border-color: var(--m-ink);
+}
+.m-tile[data-active="true"] {
+  border-color: var(--m-ink);
+  box-shadow: inset 0 0 0 1px var(--m-ink), 4px 4px 0 var(--m-ink);
+  transform: translate(-2px, -2px);
+}
+
+.m-chip,
+.telemetry-badge,
+.telemetry-badge-sm,
+.neo-badge,
+.neo-badge-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.08rem 0.5rem;
+  border-radius: 999px;
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  border: 1px solid var(--m-line-strong);
+  color: var(--m-dim);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.m-tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.m-tab {
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.86rem;
+  padding: 0.6rem 0.9rem;
+  color: var(--m-faint);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.m-tab:hover {
+  color: var(--m-text);
+}
+.m-tab[data-active="true"] {
+  color: var(--m-text);
+  font-weight: 600;
+  border-bottom-color: var(--m-ink);
+}
+
+/* ============================================================
+   Tables
+   ============================================================ */
+.m-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82rem;
+}
+.m-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--m-panel);
+  font-family: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.72rem;
+  color: var(--m-dim);
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--m-ink);
+  white-space: nowrap;
+}
+.m-table tbody td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--m-line);
+  vertical-align: middle;
+}
+.m-table tbody tr {
+  transition: background-color 0.1s ease;
+}
+.m-table tbody tr:hover {
+  background: var(--m-raised);
+}
+.m-table tbody tr[data-selected="true"] {
+  background: color-mix(in srgb, var(--team-primary) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--team-primary);
+}
+
+/* ============================================================
+   Inputs
+   ============================================================ */
+.m-input,
+.terminal-input,
+.neo-input {
+  width: 100%;
+  background: var(--m-panel);
+  border: 1px solid var(--m-line-strong);
+  border-radius: 0;
+  padding: 0.5rem 0.7rem;
+  color: var(--m-text);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.m-input:focus,
+.terminal-input:focus,
+.neo-input:focus {
+  border-color: var(--m-ink);
+  box-shadow: none;
+}
+select.m-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--m-dim) 50%),
+    linear-gradient(135deg, var(--m-dim) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 1.8rem;
+}
+input[type="range"] {
+  accent-color: var(--m-ink);
+}
+
+/* Meter */
+.m-meter {
+  height: 5px;
+  background: color-mix(in srgb, var(--m-ink) 10%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.m-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--team-primary);
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+/* Auction stamps */
+.neo-stamp,
+.sports-stamp-sold {
+  border: 2px solid var(--m-green);
+  color: var(--m-green);
+  background: color-mix(in srgb, var(--m-green) 8%, var(--m-panel));
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.neo-stamp-unsold,
+.sports-stamp-unsold {
+  border: 2px solid var(--m-faint);
+  color: var(--m-dim);
+  background: var(--m-panel);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.neo-stripes,
+.sports-stripes,
+.neo-stripes-subtle {
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, color-mix(in srgb, var(--m-ink) 5%, transparent) 6px 7px);
 }
 
-/* Custom scrollbar for Neo-Brutalist dashboard */
+/* ============================================================
+   Motion
+   ============================================================ */
+@keyframes m-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.m-ticker-track {
+  display: inline-flex;
+  gap: 2.5rem;
+  animation: m-ticker 70s linear infinite;
+  white-space: nowrap;
+}
+
+@keyframes m-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.m-rise {
+  animation: m-rise 0.5s var(--ease-out) both;
+}
+
+@keyframes m-sold-stamp {
+  0% { opacity: 0; transform: scale(1.5) rotate(-6deg); }
+  60% { opacity: 1; transform: scale(0.96) rotate(-6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-6deg); }
+}
+.m-stamp {
+  animation: m-sold-stamp 0.45s cubic-bezier(.2,.9,.3,1.2) both;
+}
+
+@keyframes m-bid-flash {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--team-primary) 60%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+.m-bid-flash {
+  animation: m-bid-flash 0.6s ease-out;
+}
+
+@keyframes subtle-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--team-primary) 25%, transparent); }
+}
+@keyframes urgent-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--m-red) 30%, transparent); border-color: var(--m-red); }
+}
+@keyframes bid-row-flash {
+  0% { background-color: color-mix(in srgb, var(--team-primary) 18%, transparent); }
+  100% { background-color: transparent; }
+}
+@keyframes sold-reveal {
+  0% { transform: scale(0.96); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.neo-pulse-3 { animation: subtle-pulse-glow 1.5s ease-in-out infinite; }
+.neo-snap-2 { animation: subtle-pulse-glow 0.8s ease-in-out infinite; }
+.neo-shake-1 { animation: urgent-pulse-glow 0.6s ease-in-out infinite; }
+.neo-stamp-animation { animation: sold-reveal 0.25s var(--ease-out) forwards; }
+.neo-flash-active { animation: bid-row-flash 0.8s ease-out; }
+
+/* Line-field drift (hero art) */
+@keyframes m-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-6px); }
+}
+.m-drift {
+  animation: m-drift 6s ease-in-out infinite alternate;
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #0d0f12;
-  border-left: 2px solid #000000;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border: 2px solid #000000;
+  background: var(--m-line-strong);
+  border-radius: 999px;
+  border: 2px solid var(--m-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--m-dim);
+}
+.m-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--m-line-strong) transparent;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+@media (prefers-reduced-motion: reduce) {
+  .m-ticker-track, .m-rise, .m-stamp, .m-bid-flash, .m-drift { animation: none; }
+  .m-tile[data-active="true"] { transform: none; }
+  html, body { transition: none; }
 }

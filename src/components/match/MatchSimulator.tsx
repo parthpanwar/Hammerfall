@@ -71,7 +71,7 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
 
   if (!team1 || !team2 || !team1XI || !team2XI || !session) {
     return (
-      <div className="neo-box p-8 text-center text-zinc-400 font-bold bg-zinc-950 rounded-xl">
+      <div className="terminal-card p-8 text-center text-[var(--m-dim)] font-bold rounded-xl">
         Initializing IPL Match Center...
       </div>
     );
@@ -96,6 +96,15 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
     const allBatsmen = [...finalSession.innings1.batsmen, ...finalSession.innings2.batsmen];
     const allBowlers = [...finalSession.innings1.bowlers, ...finalSession.innings2.bowlers];
 
+    // Every player in both XIs gets exactly one appearance, batted or not.
+    const appeared = new Set([...finalSession.team1XI.players, ...finalSession.team2XI.players]);
+    const counted = new Set<string>();
+    const appearance = (id: string) => {
+      if (counted.has(id)) return 0;
+      counted.add(id);
+      return 1;
+    };
+
     for (const b of allBatsmen) {
       if (b.balls > 0) {
         updatePlayerSeasonStats(b.playerId, {
@@ -104,7 +113,7 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
           fours: b.fours,
           sixes: b.sixes,
           innings: 1,
-          matches: 1,
+          matches: appearance(b.playerId),
         });
       }
     }
@@ -115,9 +124,11 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
           oversBowled: b.overs,
           wickets: b.wickets,
           runsConceded: b.runs,
+          matches: appearance(b.playerId),
         });
       }
     }
+    for (const id of appeared) if (!counted.has(id)) updatePlayerSeasonStats(id, { matches: appearance(id) });
 
     onMatchComplete(finalSession.result);
   };
@@ -181,7 +192,7 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
   const isHumanBatting = battingTeam.id === humanFranchiseId;
   const isHumanBowling = bowlingTeam.id === humanFranchiseId;
 
-  // Eligible Bowlers for Next Over (overs < 4 and not current bowler)
+  // Eligible Bowlers for Next Over
   const eligibleBowlers = currentInnings.bowlers.filter(
     (b, idx) => b.overs < 4 && idx !== currentInnings.currentBowlerIndex
   );
@@ -189,39 +200,43 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       {/* Match Header / Banner */}
-      <div className="neo-box-lg bg-zinc-950 p-6 rounded-3xl relative overflow-hidden border-2 border-black">
-        <div className="flex flex-wrap items-center justify-between text-xs font-black uppercase tracking-wider text-zinc-400 mb-4 pb-3 border-b-2 border-black gap-2">
+      <div className="terminal-card p-6 rounded-xl relative overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between text-xs font-semibold uppercase tracking-wider text-[var(--m-dim)] mb-4 pb-3 border-b border-[var(--m-line)] gap-2">
           <div className="flex items-center gap-2">
-            <span className="neo-badge px-2.5 py-0.5 rounded bg-amber-400 text-black text-xs font-black">
+            <span className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 font-bold">
               MATCH #{fixture.matchNumber}
             </span>
-            <span>{fixture.venue}</span>
-            <span className="text-zinc-600">•</span>
-            <span className="text-zinc-300 font-mono">PITCH: {session.pitchCondition}</span>
+            <span className="text-[var(--m-text)] font-bold">{fixture.venue}</span>
+            <span className="text-[var(--m-dim)]/50">•</span>
+            <span className="text-[var(--m-dim)] font-mono">PITCH: {session.pitchCondition}</span>
           </div>
 
           <div className="flex items-center gap-2">
             {fixture.isPlayoff && (
-              <span className="neo-badge px-2.5 py-0.5 rounded bg-red-500 text-white text-xs font-black">
+              <span className="telemetry-badge-sm bg-[var(--m-red)]/15 text-[var(--m-red)] border border-[var(--m-red)]/30">
                 {fixture.playoffType}
               </span>
             )}
-            <div className="flex rounded-lg overflow-hidden border-2 border-black text-xs">
+            <div className="flex rounded-lg overflow-hidden border border-[var(--m-line)] text-xs">
               <button
                 onClick={() => setActiveTab('center')}
-                className={`px-3 py-1 font-black ${
-                  activeTab === 'center' ? 'bg-amber-400 text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                className={`px-3 py-1 font-bold transition-colors ${
+                  activeTab === 'center'
+                    ? 'bg-[var(--m-raised)] text-[var(--m-text)]'
+                    : 'bg-[var(--m-panel)] text-[var(--m-dim)] hover:text-[var(--m-text)]'
                 }`}
               >
-                MATCH CENTER
+                Match Center
               </button>
               <button
                 onClick={() => setActiveTab('scorecard')}
-                className={`px-3 py-1 font-black ${
-                  activeTab === 'scorecard' ? 'bg-amber-400 text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                className={`px-3 py-1 font-bold transition-colors ${
+                  activeTab === 'scorecard'
+                    ? 'bg-[var(--m-raised)] text-[var(--m-text)]'
+                    : 'bg-[var(--m-panel)] text-[var(--m-dim)] hover:text-[var(--m-text)]'
                 }`}
               >
-                FULL SCORECARD
+                Full Scorecard
               </button>
             </div>
           </div>
@@ -231,29 +246,25 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
           {/* Team 1 Score */}
           <div
-            className="p-4 rounded-2xl border-2 border-black transition-all"
-            style={{
-              backgroundColor: session.battingFirstTeam.id === team1.id ? t1Theme.surface : '#09090b',
-              borderColor: session.battingFirstTeam.id === team1.id ? t1Theme.accent : '#27272a',
-            }}
+            className="p-4 rounded-xl border border-[var(--m-line)] transition-all bg-[var(--m-panel)]"
           >
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-400">{team1.name}</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--m-text)]">{team1.name}</span>
                 {session.toss.winnerId === team1.id && (
-                  <span className="ml-2 text-[10px] font-black uppercase text-amber-400">(Toss)</span>
+                  <span className="ml-2 text-[10px] font-bold uppercase text-[var(--m-gold)]">(Toss)</span>
                 )}
               </div>
               {session.battingFirstTeam.id === team1.id && session.currentInningsIndex === 1 && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-[var(--m-green)] animate-pulse" />
               )}
             </div>
-            <div className="text-3xl font-black font-mono text-white mt-1">
+            <div className="text-3xl font-bold font-mono text-[var(--m-text)] mt-1 tabular-nums">
               {session.battingFirstTeam.id === team1.id
                 ? `${session.innings1.score.runs}/${session.innings1.score.wickets}`
                 : `${session.innings2.score.runs}/${session.innings2.score.wickets}`}
             </div>
-            <div className="text-xs text-zinc-400 font-mono mt-0.5">
+            <div className="text-xs text-[var(--m-dim)] font-mono mt-0.5">
               {session.battingFirstTeam.id === team1.id
                 ? `Overs: ${session.innings1.score.overs}.${session.innings1.score.balls} / 20`
                 : `Overs: ${session.innings2.score.overs}.${session.innings2.score.balls} / 20`}
@@ -263,48 +274,48 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
           {/* Center Match Status & Win Probability */}
           <div className="text-center space-y-2">
             {session.isMatchCompleted ? (
-              <div className="neo-box p-3 bg-amber-400 text-black rounded-xl">
-                <div className="text-xs font-black uppercase tracking-wider">MATCH COMPLETED</div>
-                <div className="text-sm font-black mt-0.5">{session.result?.winMargin}</div>
-                <div className="text-[11px] font-bold text-zinc-900 mt-0.5">
-                  Player of Match: <strong>{session.result?.playerOfMatch}</strong>
+              <div className="p-3 bg-[var(--m-green)]/15 border border-[var(--m-green)]/30 text-[var(--m-green)] rounded-xl">
+                <div className="text-xs font-bold uppercase tracking-wider">Match Completed</div>
+                <div className="text-sm font-bold text-[var(--m-text)] mt-0.5">{session.result?.winMargin}</div>
+                <div className="text-[11px] text-[var(--m-dim)] mt-0.5">
+                  Player of Match: <strong className="text-[var(--m-text)]">{session.result?.playerOfMatch}</strong>
                 </div>
               </div>
             ) : (
               <div>
-                <div className="text-xs font-black uppercase tracking-widest text-amber-400">
-                  INNINGS {session.currentInningsIndex} • OVER {currentInnings.currentOver + 1}
+                <div className="text-xs font-bold uppercase tracking-widest text-[var(--m-gold)]">
+                  Innings {session.currentInningsIndex} • Over {currentInnings.currentOver + 1}
                 </div>
                 {session.currentInningsIndex === 2 && currentInnings.target && (
-                  <div className="text-sm font-mono font-black text-zinc-200 mt-1">
+                  <div className="text-sm font-mono font-bold text-[var(--m-text)] mt-1">
                     Need{' '}
-                    <span className="text-amber-400 font-bold">
+                    <span className="text-[var(--m-gold)]">
                       {Math.max(0, currentInnings.target - currentInnings.score.runs)} runs
                     </span>{' '}
                     in{' '}
-                    <span className="text-zinc-100">
+                    <span className="text-[var(--m-text)]">
                       {Math.max(0, 120 - (currentInnings.currentOver * 6 + currentInnings.legalBallsInOver))} balls
                     </span>
                   </div>
                 )}
-                <div className="text-xs font-mono text-zinc-400 mt-1">
+                <div className="text-xs font-mono text-[var(--m-dim)] mt-1">
                   CRR: {session.winProbability.currentRunRate}
                   {session.winProbability.requiredRunRate !== null && ` • RRR: ${session.winProbability.requiredRunRate}`}
                 </div>
 
-                {/* Win Probability Bar */}
+                {/* Win Probability Bar (F1 telemetry style) */}
                 <div className="mt-3">
-                  <div className="flex justify-between text-[10px] font-black font-mono text-zinc-400 mb-1">
+                  <div className="flex justify-between text-[10px] font-bold font-mono text-[var(--m-dim)] mb-1">
                     <span>{battingTeam.shortName} {session.winProbability.battingTeamWinPct}%</span>
                     <span>{bowlingTeam.shortName} {session.winProbability.bowlingTeamWinPct}%</span>
                   </div>
-                  <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden flex border border-black">
+                  <div className="h-2 w-full bg-[var(--m-panel)] rounded-full overflow-hidden flex border border-[var(--m-line)]">
                     <div
-                      className="h-full bg-amber-400 transition-all duration-300"
+                      className="h-full bg-[var(--m-accent-ink)] transition-all duration-300"
                       style={{ width: `${session.winProbability.battingTeamWinPct}%` }}
                     />
                     <div
-                      className="h-full bg-blue-500 transition-all duration-300"
+                      className="h-full bg-[var(--m-gold)] transition-all duration-300"
                       style={{ width: `${session.winProbability.bowlingTeamWinPct}%` }}
                     />
                   </div>
@@ -315,29 +326,25 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
 
           {/* Team 2 Score */}
           <div
-            className="p-4 rounded-2xl border-2 border-black transition-all"
-            style={{
-              backgroundColor: session.battingFirstTeam.id === team2.id ? t2Theme.surface : '#09090b',
-              borderColor: session.battingFirstTeam.id === team2.id ? t2Theme.accent : '#27272a',
-            }}
+            className="p-4 rounded-xl border border-[var(--m-line)] transition-all bg-[var(--m-panel)]"
           >
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-400">{team2.name}</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--m-text)]">{team2.name}</span>
                 {session.toss.winnerId === team2.id && (
-                  <span className="ml-2 text-[10px] font-black uppercase text-amber-400">(Toss)</span>
+                  <span className="ml-2 text-[10px] font-bold uppercase text-[var(--m-gold)]">(Toss)</span>
                 )}
               </div>
               {session.battingFirstTeam.id === team2.id && session.currentInningsIndex === 1 && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-[var(--m-green)] animate-pulse" />
               )}
             </div>
-            <div className="text-3xl font-black font-mono text-white mt-1">
+            <div className="text-3xl font-bold font-mono text-[var(--m-text)] mt-1 tabular-nums">
               {session.battingFirstTeam.id === team2.id
                 ? `${session.innings1.score.runs}/${session.innings1.score.wickets}`
                 : `${session.innings2.score.runs}/${session.innings2.score.wickets}`}
             </div>
-            <div className="text-xs text-zinc-400 font-mono mt-0.5">
+            <div className="text-xs text-[var(--m-dim)] font-mono mt-0.5">
               {session.battingFirstTeam.id === team2.id
                 ? `Overs: ${session.innings1.score.overs}.${session.innings1.score.balls} / 20`
                 : `Overs: ${session.innings2.score.overs}.${session.innings2.score.balls} / 20`}
@@ -346,8 +353,8 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
         </div>
 
         {/* Toss Decision Bar */}
-        <div className="mt-4 pt-3 border-t border-zinc-800 text-xs text-zinc-400 font-medium">
-          <span className="font-bold text-zinc-300">Toss: </span>
+        <div className="mt-4 pt-3 border-t border-[var(--m-line)] text-xs text-[var(--m-dim)] font-medium">
+          <span className="font-bold text-[var(--m-text)]">Toss: </span>
           {session.toss.reason}
         </div>
       </div>
@@ -359,12 +366,12 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             {/* Active Striker, Non-Striker & Current Bowler Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Batters Card */}
-              <div className="neo-box bg-zinc-950 p-4 rounded-2xl border-2 border-black space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                  <span className="text-xs font-black uppercase text-zinc-400 flex items-center gap-1.5">
-                    <Flame className="w-3.5 h-3.5 text-amber-400" /> BATTING: {battingTeam.shortName}
+              <div className="terminal-card p-4 rounded-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--m-line)] pb-2">
+                  <span className="text-xs font-bold uppercase text-[var(--m-text)] flex items-center gap-1.5">
+                    <Flame className="w-3.5 h-3.5 text-[var(--m-gold)]" /> Batting: {battingTeam.shortName}
                   </span>
-                  <span className="text-[11px] font-mono text-zinc-500">
+                  <span className="text-[11px] font-mono text-[var(--m-dim)]">
                     Partnership: {currentInnings.currentPartnership.runs} ({currentInnings.currentPartnership.balls}b)
                   </span>
                 </div>
@@ -372,14 +379,14 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                 {/* Striker */}
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-amber-400 font-black">▶</span>
-                    <span className="font-bold text-white">{striker?.playerName || 'Batsman'}</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">*{striker?.isOnStrike ? '(Strike)' : ''}</span>
+                    <span className="text-[var(--m-green)] font-bold">▶</span>
+                    <span className="font-bold text-[var(--m-text)]">{striker?.playerName || 'Batsman'}</span>
+                    <span className="text-[10px] text-[var(--m-dim)] font-mono">*{striker?.isOnStrike ? '(Strike)' : ''}</span>
                   </div>
-                  <div className="font-mono font-bold text-zinc-200">
-                    <span className="text-amber-400 font-black text-sm">{striker?.runs || 0}</span>
-                    <span className="text-zinc-500 text-xs"> ({striker?.balls || 0})</span>
-                    <span className="text-zinc-500 text-[10px] ml-2 font-normal">
+                  <div className="font-mono font-bold text-[var(--m-text)]">
+                    <span className="text-[var(--m-gold)] text-sm tabular-nums">{striker?.runs || 0}</span>
+                    <span className="text-[var(--m-dim)] text-xs"> ({striker?.balls || 0})</span>
+                    <span className="text-[var(--m-dim)] text-[10px] ml-2 font-normal">
                       4s:{striker?.fours || 0} 6s:{striker?.sixes || 0} SR:{striker?.strikeRate || 0}
                     </span>
                   </div>
@@ -388,13 +395,13 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                 {/* Non-Striker */}
                 <div className="flex items-center justify-between text-xs opacity-75">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-zinc-600 font-black">▷</span>
-                    <span className="font-medium text-zinc-300">{nonStriker?.playerName || 'Batsman'}</span>
+                    <span className="text-[var(--m-dim)] font-bold">▷</span>
+                    <span className="font-medium text-[var(--m-text)]">{nonStriker?.playerName || 'Batsman'}</span>
                   </div>
-                  <div className="font-mono text-zinc-300">
-                    <span className="font-bold">{nonStriker?.runs || 0}</span>
-                    <span className="text-zinc-500 text-xs"> ({nonStriker?.balls || 0})</span>
-                    <span className="text-zinc-500 text-[10px] ml-2">
+                  <div className="font-mono text-[var(--m-text)]">
+                    <span className="font-bold tabular-nums">{nonStriker?.runs || 0}</span>
+                    <span className="text-[var(--m-dim)] text-xs"> ({nonStriker?.balls || 0})</span>
+                    <span className="text-[var(--m-dim)] text-[10px] ml-2 font-normal">
                       4s:{nonStriker?.fours || 0} 6s:{nonStriker?.sixes || 0} SR:{nonStriker?.strikeRate || 0}
                     </span>
                   </div>
@@ -402,33 +409,33 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
               </div>
 
               {/* Bowler Card */}
-              <div className="neo-box bg-zinc-950 p-4 rounded-2xl border-2 border-black space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                  <span className="text-xs font-black uppercase text-zinc-400 flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-blue-400" /> BOWLING: {bowlingTeam.shortName}
+              <div className="terminal-card p-4 rounded-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--m-line)] pb-2">
+                  <span className="text-xs font-bold uppercase text-[var(--m-text)] flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-[var(--m-accent-ink)]" /> Bowling: {bowlingTeam.shortName}
                   </span>
-                  <span className="text-[11px] font-mono text-zinc-500">
+                  <span className="text-[11px] font-mono text-[var(--m-dim)]">
                     Overs Left: {Math.max(0, 4 - (currentBowler?.overs || 0))}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-bold text-white">{currentBowler?.playerName || 'Bowler'}</span>
+                    <span className="font-bold text-[var(--m-text)]">{currentBowler?.playerName || 'Bowler'}</span>
                     {currentInnings.isFreeHitActive && (
-                      <span className="ml-2 neo-badge px-1.5 py-0.2 rounded bg-amber-400 text-black text-[9px] font-black">
+                      <span className="ml-2 telemetry-badge-sm bg-[var(--m-gold)]/20 text-[var(--m-gold)] border border-[var(--m-gold)]/40 text-[9px]">
                         FREE HIT
                       </span>
                     )}
                   </div>
-                  <div className="font-mono font-bold text-zinc-200">
-                    <span className="text-blue-400 font-black text-sm">
+                  <div className="font-mono font-bold text-[var(--m-text)]">
+                    <span className="text-[var(--m-accent-ink)] text-sm tabular-nums">
                       {currentBowler?.wickets || 0}-{currentBowler?.runs || 0}
                     </span>
-                    <span className="text-zinc-500 text-xs ml-1">
+                    <span className="text-[var(--m-dim)] text-xs ml-1">
                       ({currentBowler?.overs || 0}.{currentInnings.legalBallsInOver} ov)
                     </span>
-                    <span className="text-zinc-500 text-[10px] ml-2 font-normal">
+                    <span className="text-[var(--m-dim)] text-[10px] ml-2 font-normal">
                       Econ: {currentBowler?.economy || 0}
                     </span>
                   </div>
@@ -436,28 +443,28 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
 
                 {/* Over Deliveries Rail */}
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--m-dim)] mb-1">
                     THIS OVER / RECENT BALLS:
                   </div>
                   <div className="flex items-center gap-1.5 overflow-x-auto py-1">
                     {currentInnings.recentDeliveries.length === 0 ? (
-                      <span className="text-xs font-mono text-zinc-600">Waiting for first ball...</span>
+                      <span className="text-xs font-mono text-[var(--m-dim)]/60">Waiting for first ball...</span>
                     ) : (
                       currentInnings.recentDeliveries.slice(-10).map((b, idx) => (
                         <span
                           key={idx}
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-black border-2 border-black shadow-[1px_1px_0px_#000] ${
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-bold border ${
                             b.isWicket
-                              ? 'bg-red-500 text-white'
+                              ? 'bg-[var(--m-red)]/20 text-[var(--m-red)] border-[var(--m-red)]/40'
                               : b.text === '6'
-                              ? 'bg-purple-600 text-white'
+                              ? 'bg-[var(--m-green)]/20 text-[var(--m-green)] border-[var(--m-green)]/40'
                               : b.text === '4'
-                              ? 'bg-amber-400 text-black'
+                              ? 'bg-[var(--m-gold)]/20 text-[var(--m-gold)] border-[var(--m-gold)]/40'
                               : b.isExtra
-                              ? 'bg-blue-500 text-white'
+                              ? 'bg-[var(--m-accent-ink)]/20 text-[var(--m-accent-ink)] border-[var(--m-accent-ink)]/40'
                               : b.text === '0'
-                              ? 'bg-zinc-800 text-zinc-400'
-                              : 'bg-zinc-700 text-white'
+                              ? 'bg-[var(--m-raised)] text-[var(--m-dim)] border-[var(--m-line)]'
+                              : 'bg-[var(--m-raised)] text-[var(--m-text)] border-[var(--m-line)]'
                           }`}
                         >
                           {b.text}
@@ -470,15 +477,15 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             </div>
 
             {/* Live Commentary Feed */}
-            <div className="neo-box bg-zinc-950 p-4 rounded-2xl border-2 border-black flex flex-col h-64 overflow-hidden">
-              <div className="text-xs font-black uppercase tracking-wider text-zinc-400 border-b border-zinc-800 pb-2 mb-2 flex items-center justify-between">
-                <span>BALL-BY-BALL COMMENTARY</span>
-                <span className="text-[10px] font-mono text-zinc-500">Live Audio / Text Feed</span>
+            <div className="terminal-card p-4 rounded-xl flex flex-col h-64 overflow-hidden">
+              <div className="text-xs font-bold uppercase tracking-wider text-[var(--m-text)] border-b border-[var(--m-line)] pb-2 mb-2 flex items-center justify-between">
+                <span>Ball-by-Ball Telemetry Feed</span>
+                <span className="text-[10px] font-mono text-[var(--m-dim)]">Live Match Engine</span>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-xs">
                 {currentInnings.balls.length === 0 ? (
-                  <div className="text-zinc-600 text-center py-10 font-bold">
+                  <div className="text-[var(--m-dim)]/60 text-center py-10 font-medium">
                     Match ready to start. Select tactics and bowl delivery.
                   </div>
                 ) : (
@@ -487,31 +494,31 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                       key={idx}
                       className={`p-2 rounded-lg border ${
                         ball.outcome === 'Wicket'
-                          ? 'bg-red-950/40 border-red-800/80 text-red-200'
+                          ? 'bg-[var(--m-red)]/10 border-[var(--m-red)]/30 text-[var(--m-red)]'
                           : ball.runs >= 4
-                          ? 'bg-amber-950/30 border-amber-800/60 text-amber-200'
-                          : 'bg-zinc-900 border-zinc-800 text-zinc-300'
+                          ? 'bg-[var(--m-gold)]/10 border-[var(--m-gold)]/30 text-[var(--m-gold)]'
+                          : 'bg-[var(--m-raised)] border-[var(--m-line)] text-[var(--m-text)]'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-[11px] font-black mb-0.5">
-                        <span className="text-amber-400">
+                      <div className="flex items-center justify-between text-[11px] font-bold mb-0.5">
+                        <span className="text-[var(--m-accent-ink)]">
                           {ball.over}.{ball.ball}
                         </span>
                         <span
-                          className={`px-1.5 py-0.2 rounded font-mono text-[10px] ${
+                          className={`px-1.5 py-0.5 rounded font-mono text-[10px] ${
                             ball.outcome === 'Wicket'
-                              ? 'bg-red-500 text-white'
+                              ? 'bg-[var(--m-red)] text-white'
                               : ball.runs === 6
-                              ? 'bg-purple-500 text-white'
+                              ? 'bg-[var(--m-green)] text-white'
                               : ball.runs === 4
-                              ? 'bg-amber-400 text-black'
-                              : 'bg-zinc-800 text-zinc-300'
+                              ? 'bg-[var(--m-gold)] text-white font-extrabold'
+                              : 'bg-[var(--m-panel)] text-[var(--m-dim)]'
                           }`}
                         >
                           {ball.outcome === 'Wicket' ? 'WICKET' : `${ball.runs} RUNS`}
                         </span>
                       </div>
-                      <div className="text-zinc-300 font-sans text-xs">{ball.commentary}</div>
+                      <div className="text-[var(--m-text)] font-sans text-xs">{ball.commentary}</div>
                     </div>
                   ))
                 )}
@@ -523,28 +530,28 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
           {/* Right Col: Tactical Controls & Simulation Action Bar */}
           <div className="space-y-6">
             {/* Tactical Management Box */}
-            <div className="neo-box bg-zinc-950 p-5 rounded-2xl border-2 border-black space-y-5">
-              <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
-                <Zap className="w-4 h-4 text-amber-400 stroke-[2.5]" />
-                <h3 className="text-sm font-black uppercase text-white tracking-wide">
-                  TACTICAL MATCH MANAGEMENT
+            <div className="terminal-card p-5 rounded-xl space-y-5">
+              <div className="flex items-center gap-2 border-b border-[var(--m-line)] pb-2">
+                <Zap className="w-4 h-4 text-[var(--m-gold)]" />
+                <h3 className="text-sm font-bold uppercase text-[var(--m-text)] tracking-wide font-heading">
+                  Tactical Match Management
                 </h3>
               </div>
 
               {/* Batting Aggression Selector */}
               <div>
-                <label className="text-[11px] font-black uppercase tracking-wider text-zinc-400 block mb-2">
-                  BATTING AGGRESSION {isHumanBatting ? '(YOUR TEAM)' : '(CPU STRATEGY)'}
+                <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--m-dim)] block mb-2">
+                  Batting Aggression {isHumanBatting ? '(Your Team)' : '(CPU Strategy)'}
                 </label>
-                <div className="grid grid-cols-2 gap-2 text-xs font-black">
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                   {(['Anchor', 'Balanced', 'Attack', 'Blitz'] as BattingAggression[]).map((agg) => (
                     <button
                       key={agg}
                       onClick={() => setSelectedAggression(agg)}
-                      className={`p-2 rounded-xl border-2 border-black transition-all text-center ${
+                      className={`p-2 rounded-lg border transition-all text-center ${
                         selectedAggression === agg
-                          ? 'bg-amber-400 text-black shadow-[2px_2px_0px_#000]'
-                          : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                          ? 'bg-[var(--m-raised)] text-[var(--m-gold)] border-[var(--m-gold)]'
+                          : 'bg-[var(--m-panel)] text-[var(--m-dim)] border-[var(--m-line)] hover:text-[var(--m-text)]'
                       }`}
                     >
                       {agg}
@@ -555,18 +562,18 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
 
               {/* Bowling Strategy Selector */}
               <div>
-                <label className="text-[11px] font-black uppercase tracking-wider text-zinc-400 block mb-2">
-                  BOWLING TACTICS {isHumanBowling ? '(YOUR TEAM)' : '(CPU STRATEGY)'}
+                <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--m-dim)] block mb-2">
+                  Bowling Tactics {isHumanBowling ? '(Your Team)' : '(CPU Strategy)'}
                 </label>
-                <div className="grid grid-cols-2 gap-2 text-xs font-black">
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                   {(['Stock', 'Yorker', 'Bouncer', 'SlowerBall', 'WideLine'] as BowlingStrategy[]).map((strat) => (
                     <button
                       key={strat}
                       onClick={() => setSelectedStrategy(strat)}
-                      className={`p-2 rounded-xl border-2 border-black transition-all text-center ${
+                      className={`p-2 rounded-lg border transition-all text-center ${
                         selectedStrategy === strat
-                          ? 'bg-blue-500 text-white shadow-[2px_2px_0px_#000]'
-                          : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                          ? 'bg-[var(--m-raised)] text-[var(--m-accent-ink)] border-[var(--m-accent-ink)]'
+                          : 'bg-[var(--m-panel)] text-[var(--m-dim)] border-[var(--m-line)] hover:text-[var(--m-text)]'
                       }`}
                     >
                       {strat}
@@ -575,15 +582,15 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                 </div>
               </div>
 
-              {/* Select Next Bowler (if eligible) */}
+              {/* Select Next Bowler */}
               <div>
-                <label className="text-[11px] font-black uppercase tracking-wider text-zinc-400 block mb-2">
-                  CHOOSE NEXT BOWLER
+                <label className="text-[11px] font-bold uppercase tracking-wider text-[var(--m-dim)] block mb-2">
+                  Choose Next Bowler
                 </label>
                 <select
                   value={selectedNextBowlerIdx ?? ''}
                   onChange={(e) => setSelectedNextBowlerIdx(e.target.value ? Number(e.target.value) : undefined)}
-                  className="w-full bg-zinc-900 border-2 border-black text-white text-xs font-bold p-2.5 rounded-xl outline-none focus:border-amber-400"
+                  className="terminal-input w-full p-2.5 rounded-lg text-xs font-medium cursor-pointer"
                 >
                   <option value="">CPU Recommended Rotation</option>
                   {eligibleBowlers.map((b) => {
@@ -599,47 +606,47 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             </div>
 
             {/* Simulation Action Controls */}
-            <div className="neo-box bg-zinc-950 p-5 rounded-2xl border-2 border-black space-y-3">
-              <div className="text-[11px] font-black uppercase tracking-wider text-zinc-400 border-b border-zinc-800 pb-2">
-                SIMULATION SPEED CONTROLS
+            <div className="terminal-card p-5 rounded-xl space-y-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--m-dim)] border-b border-[var(--m-line)] pb-2">
+                Simulation Speed Controls
               </div>
 
               <div className="space-y-2">
                 <button
                   disabled={session.isMatchCompleted}
                   onClick={handleNextBall}
-                  className="w-full neo-btn py-3 px-4 rounded-xl font-black text-xs uppercase bg-emerald-400 text-black flex items-center justify-center gap-2 hover:bg-emerald-300 disabled:opacity-50"
+                  className="w-full sports-btn py-3 px-4 rounded-lg font-bold text-xs uppercase bg-[var(--m-green)] text-white flex items-center justify-center gap-2 hover:bg-[var(--m-green)]/90 disabled:opacity-50"
                 >
                   <Play className="w-4 h-4 fill-current" />
-                  <span>BOWL NEXT BALL</span>
+                  <span>Bowl Next Ball</span>
                 </button>
 
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     disabled={session.isMatchCompleted}
                     onClick={handleNextOver}
-                    className="neo-btn py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-amber-400 text-black flex items-center justify-center gap-1.5 hover:bg-amber-300 disabled:opacity-50"
+                    className="sports-btn py-2.5 px-3 rounded-lg font-bold text-xs uppercase bg-[var(--m-raised)] border border-[var(--m-line)] text-[var(--m-gold)] flex items-center justify-center gap-1.5 hover:bg-[var(--m-line)] disabled:opacity-50"
                   >
                     <FastForward className="w-3.5 h-3.5" />
-                    <span>NEXT OVER</span>
+                    <span>Next Over</span>
                   </button>
 
                   <button
                     disabled={session.isMatchCompleted}
                     onClick={handleFinishInnings}
-                    className="neo-btn py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-purple-500 text-white flex items-center justify-center gap-1.5 hover:bg-purple-400 disabled:opacity-50"
+                    className="sports-btn py-2.5 px-3 rounded-lg font-bold text-xs uppercase bg-[var(--m-raised)] border border-[var(--m-line)] text-[var(--m-accent-ink)] flex items-center justify-center gap-1.5 hover:bg-[var(--m-line)] disabled:opacity-50"
                   >
-                    <span>FINISH INNINGS</span>
+                    <span>Finish Innings</span>
                   </button>
                 </div>
 
                 <button
                   disabled={session.isMatchCompleted}
                   onClick={handleInstantMatch}
-                  className="w-full neo-btn py-2.5 px-4 rounded-xl font-black text-xs uppercase bg-zinc-800 text-zinc-200 border-2 border-black flex items-center justify-center gap-2 hover:bg-zinc-700 disabled:opacity-50"
+                  className="w-full sports-btn py-2.5 px-4 rounded-lg font-bold text-xs uppercase bg-[var(--m-panel)] text-[var(--m-dim)] border border-[var(--m-line)] flex items-center justify-center gap-2 hover:text-[var(--m-text)] hover:bg-[var(--m-raised)] disabled:opacity-50"
                 >
                   <TrendingUp className="w-3.5 h-3.5" />
-                  <span>INSTANT SIMULATE MATCH</span>
+                  <span>Instant Simulate Match</span>
                 </button>
               </div>
             </div>
@@ -649,12 +656,12 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
         /* Full Scorecard View */
         <div className="space-y-6">
           {/* Innings 1 Scorecard */}
-          <div className="neo-box bg-zinc-950 p-6 rounded-3xl border-2 border-black space-y-4">
-            <div className="flex items-center justify-between border-b-2 border-black pb-3">
-              <h3 className="text-base font-black uppercase text-amber-400">
-                1ST INNINGS: {session.innings1.battingTeamName}
+          <div className="terminal-card p-6 rounded-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--m-line)] pb-3">
+              <h3 className="text-base font-bold uppercase text-[var(--m-gold)] font-heading">
+                1st Innings: {session.innings1.battingTeamName}
               </h3>
-              <span className="font-mono text-base font-black text-white">
+              <span className="font-mono text-base font-bold text-[var(--m-text)] tabular-nums">
                 {session.innings1.score.runs}/{session.innings1.score.wickets} ({session.innings1.score.overs}.
                 {session.innings1.score.balls} Overs)
               </span>
@@ -664,7 +671,7 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500">
+                  <tr className="border-b border-[var(--m-line)] text-[var(--m-dim)]">
                     <th className="py-2">Batter</th>
                     <th className="py-2">Dismissal</th>
                     <th className="py-2 text-right">R</th>
@@ -674,16 +681,16 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                     <th className="py-2 text-right">SR</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                <tbody className="divide-y divide-[var(--m-line)]/50 text-[var(--m-text)]">
                   {session.innings1.batsmen.map((b) => (
                     <tr key={b.playerId}>
-                      <td className="py-2 font-bold text-white">{b.playerName}</td>
-                      <td className="py-2 text-zinc-500 text-[11px]">{b.dismissalText}</td>
-                      <td className="py-2 text-right font-black text-amber-400">{b.runs}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.balls}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.fours}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.sixes}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.strikeRate}</td>
+                      <td className="py-2 font-bold">{b.playerName}</td>
+                      <td className="py-2 text-[var(--m-dim)] text-[11px]">{b.dismissalText}</td>
+                      <td className="py-2 text-right font-bold text-[var(--m-gold)] tabular-nums">{b.runs}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.balls}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.fours}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.sixes}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.strikeRate}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -691,11 +698,11 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             </div>
 
             {/* Bowling Table */}
-            <div className="overflow-x-auto pt-4 border-t border-zinc-800">
-              <div className="text-xs font-black uppercase text-blue-400 mb-2">Bowling Spell</div>
+            <div className="overflow-x-auto pt-4 border-t border-[var(--m-line)]">
+              <div className="text-xs font-bold uppercase text-[var(--m-accent-ink)] mb-2">Bowling Spell</div>
               <table className="w-full text-left text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500">
+                  <tr className="border-b border-[var(--m-line)] text-[var(--m-dim)]">
                     <th className="py-2">Bowler</th>
                     <th className="py-2 text-right">O</th>
                     <th className="py-2 text-right">M</th>
@@ -704,15 +711,15 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                     <th className="py-2 text-right">Econ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                <tbody className="divide-y divide-[var(--m-line)]/50 text-[var(--m-text)]">
                   {session.innings1.bowlers.map((bw) => (
                     <tr key={bw.playerId}>
-                      <td className="py-2 font-bold text-white">{bw.playerName}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.overs}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.maidens}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.runs}</td>
-                      <td className="py-2 text-right font-black text-blue-400">{bw.wickets}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.economy}</td>
+                      <td className="py-2 font-bold">{bw.playerName}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.overs}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.maidens}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.runs}</td>
+                      <td className="py-2 text-right font-bold text-[var(--m-green)] tabular-nums">{bw.wickets}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.economy}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -721,12 +728,12 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
           </div>
 
           {/* Innings 2 Scorecard */}
-          <div className="neo-box bg-zinc-950 p-6 rounded-3xl border-2 border-black space-y-4">
-            <div className="flex items-center justify-between border-b-2 border-black pb-3">
-              <h3 className="text-base font-black uppercase text-amber-400">
-                2ND INNINGS: {session.innings2.battingTeamName}
+          <div className="terminal-card p-6 rounded-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--m-line)] pb-3">
+              <h3 className="text-base font-bold uppercase text-[var(--m-gold)] font-heading">
+                2nd Innings: {session.innings2.battingTeamName}
               </h3>
-              <span className="font-mono text-base font-black text-white">
+              <span className="font-mono text-base font-bold text-[var(--m-text)] tabular-nums">
                 {session.innings2.score.runs}/{session.innings2.score.wickets} ({session.innings2.score.overs}.
                 {session.innings2.score.balls} Overs)
               </span>
@@ -736,7 +743,7 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500">
+                  <tr className="border-b border-[var(--m-line)] text-[var(--m-dim)]">
                     <th className="py-2">Batter</th>
                     <th className="py-2">Dismissal</th>
                     <th className="py-2 text-right">R</th>
@@ -746,16 +753,16 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                     <th className="py-2 text-right">SR</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                <tbody className="divide-y divide-[var(--m-line)]/50 text-[var(--m-text)]">
                   {session.innings2.batsmen.map((b) => (
                     <tr key={b.playerId}>
-                      <td className="py-2 font-bold text-white">{b.playerName}</td>
-                      <td className="py-2 text-zinc-500 text-[11px]">{b.dismissalText}</td>
-                      <td className="py-2 text-right font-black text-amber-400">{b.runs}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.balls}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.fours}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.sixes}</td>
-                      <td className="py-2 text-right text-zinc-400">{b.strikeRate}</td>
+                      <td className="py-2 font-bold">{b.playerName}</td>
+                      <td className="py-2 text-[var(--m-dim)] text-[11px]">{b.dismissalText}</td>
+                      <td className="py-2 text-right font-bold text-[var(--m-gold)] tabular-nums">{b.runs}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.balls}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.fours}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.sixes}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{b.strikeRate}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -763,11 +770,11 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
             </div>
 
             {/* Bowling Table */}
-            <div className="overflow-x-auto pt-4 border-t border-zinc-800">
-              <div className="text-xs font-black uppercase text-blue-400 mb-2">Bowling Spell</div>
+            <div className="overflow-x-auto pt-4 border-t border-[var(--m-line)]">
+              <div className="text-xs font-bold uppercase text-[var(--m-accent-ink)] mb-2">Bowling Spell</div>
               <table className="w-full text-left text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500">
+                  <tr className="border-b border-[var(--m-line)] text-[var(--m-dim)]">
                     <th className="py-2">Bowler</th>
                     <th className="py-2 text-right">O</th>
                     <th className="py-2 text-right">M</th>
@@ -776,15 +783,15 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
                     <th className="py-2 text-right">Econ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                <tbody className="divide-y divide-[var(--m-line)]/50 text-[var(--m-text)]">
                   {session.innings2.bowlers.map((bw) => (
                     <tr key={bw.playerId}>
-                      <td className="py-2 font-bold text-white">{bw.playerName}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.overs}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.maidens}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.runs}</td>
-                      <td className="py-2 text-right font-black text-blue-400">{bw.wickets}</td>
-                      <td className="py-2 text-right text-zinc-400">{bw.economy}</td>
+                      <td className="py-2 font-bold">{bw.playerName}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.overs}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.maidens}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.runs}</td>
+                      <td className="py-2 text-right font-bold text-[var(--m-green)] tabular-nums">{bw.wickets}</td>
+                      <td className="py-2 text-right text-[var(--m-dim)] tabular-nums">{bw.economy}</td>
                     </tr>
                   ))}
                 </tbody>

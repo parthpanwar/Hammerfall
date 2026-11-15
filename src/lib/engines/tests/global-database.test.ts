@@ -47,8 +47,19 @@ function assert(condition: boolean, message: string) {
 // -----------------------------------------------------------------------------
 console.log('--- TEST 1: Global Player Database Integrity & Provenance ---');
 
-assert(GLOBAL_PLAYERS.length >= 1000, `Database contains at least 1,000 cricketers (found ${GLOBAL_PLAYERS.length})`);
-assert(GLOBAL_PLAYERS.length === 1250, `Database contains exact verified count of 1,250 cricketers`);
+assert(GLOBAL_PLAYERS.length >= 500, `Database contains at least 500 active cricketers (found ${GLOBAL_PLAYERS.length})`);
+
+// Cleaned-database guarantees (scripts/data/clean_player_database.ts)
+assert(GLOBAL_PLAYERS.every((p) => !/pakistan/i.test(p.country)), 'No Pakistani nationals in the auction database');
+assert(GLOBAL_PLAYERS.every((p) => !p.isRetired && p.retirementScope !== 'ALL_CRICKET' && p.retirementScope !== 'IPL_ONLY'), 'No retired players in the auction database');
+const csIds = GLOBAL_PLAYERS.map((p) => p.cricsheetId).filter((id) => id && !id.startsWith('cric_'));
+assert(new Set(csIds).size === csIds.length, 'No two players share a Cricsheet person ID (no duplicates)');
+const normName = (n: string) => `${n.replace(/\s*\(\d+\)$/, '').toLowerCase().replace(/[^a-z]/g, '')}`;
+const nameKeys = GLOBAL_PLAYERS.map((p) => `${normName(p.name)}|${p.country}`);
+assert(new Set(nameKeys).size === nameKeys.length, 'No duplicate player names within a country');
+for (const [full, short] of [['Andre Russell', 'AD Russell'], ['Glenn Maxwell', 'GJ Maxwell'], ['Jos Buttler', 'JC Buttler']]) {
+  assert(!(GLOBAL_PLAYERS.some((p) => p.name === full) && GLOBAL_PLAYERS.some((p) => p.name === short)), `${full} is not duplicated as ${short}`);
+}
 
 // Verify ID uniqueness
 const uniqueIds = new Set(GLOBAL_PLAYERS.map((p) => p.id));
@@ -56,17 +67,17 @@ assert(uniqueIds.size === GLOBAL_PLAYERS.length, `All ${GLOBAL_PLAYERS.length} p
 
 // Check Cricsheet IDs presence
 const withCricsheet = GLOBAL_PLAYERS.filter((p) => p.cricsheetId && p.cricsheetId.length > 0);
-assert(withCricsheet.length >= 1000, `At least 1,000 players possess verified Cricsheet registry IDs (found ${withCricsheet.length})`);
+assert(withCricsheet.length >= 500, `At least 500 players possess Cricsheet registry IDs (found ${withCricsheet.length})`);
 
 // Check country distribution
 const indianPlayers = GLOBAL_PLAYERS.filter((p) => p.nationality === 'Indian');
 const overseasPlayers = GLOBAL_PLAYERS.filter((p) => p.nationality === 'Overseas');
-assert(indianPlayers.length >= 500, `Sufficient Indian domestic/international player pool (${indianPlayers.length})`);
-assert(overseasPlayers.length >= 500, `Sufficient Overseas international player pool (${overseasPlayers.length})`);
+assert(indianPlayers.length >= 250, `Sufficient Indian domestic/international player pool (${indianPlayers.length})`);
+assert(overseasPlayers.length >= 250, `Sufficient Overseas international player pool (${overseasPlayers.length})`);
 
 // Check valid age bounds
-const validAges = GLOBAL_PLAYERS.every((p) => p.age >= 16 && p.age <= 46);
-assert(validAges, `All player ages are authentic and within realistic athletic bounds (16-46 years)`);
+const validAges = GLOBAL_PLAYERS.every((p) => p.age >= 14 && p.age <= 46);
+assert(validAges, `All player ages are authentic and within realistic athletic bounds (14-46 years — Vaibhav Suryavanshi debuted at 14)`);
 
 // -----------------------------------------------------------------------------
 // TEST 2: Capped vs Uncapped Classification
@@ -76,8 +87,8 @@ console.log('\n--- TEST 2: Capped vs Uncapped Classification ---');
 const capped = GLOBAL_PLAYERS.filter((p) => p.status === 'Capped');
 const uncapped = GLOBAL_PLAYERS.filter((p) => p.status === 'Uncapped');
 
-assert(capped.length >= 400, `Realistic capped player count (found ${capped.length})`);
-assert(uncapped.length >= 600, `Robust uncapped grassroots and domestic talent pool (found ${uncapped.length})`);
+assert(capped.length >= 200, `Realistic capped player count (found ${capped.length})`);
+assert(uncapped.length >= 250, `Robust uncapped grassroots and domestic talent pool (found ${uncapped.length})`);
 
 // Famous players check
 const virat = GLOBAL_PLAYERS.find((p) => p.name === 'Virat Kohli');
@@ -93,7 +104,7 @@ console.log('\n--- TEST 3: Official Base Price Brackets ---');
 
 const officialSet = new Set<number>(OFFICIAL_BASE_PRICES);
 const allPricesValid = GLOBAL_PLAYERS.every((p) => officialSet.has(p.basePrice as any));
-assert(allPricesValid, `All 1,250 players belong strictly to official IPL base price brackets (20L - 200L)`);
+assert(allPricesValid, `All ${GLOBAL_PLAYERS.length} players belong strictly to official IPL base price brackets (20L - 200L)`);
 
 // Elite players in 200L bracket
 const topBracket = GLOBAL_PLAYERS.filter((p) => p.basePrice === 200);
@@ -108,8 +119,14 @@ assert(uncappedPricesValid, `Uncapped cricketers conform to official IPL base pr
 // -----------------------------------------------------------------------------
 console.log('\n--- TEST 4: Pre-Auction Registration & CPU Shortlists ---');
 
+// Realistic retention day: each franchise keeps its top 4 players (40 total).
 const retainedIds = new Set<string>(
-  GLOBAL_PLAYERS.filter((p) => p.currentFranchiseId !== null).slice(0, 40).map((p) => p.id)
+  FRANCHISES.flatMap((f) =>
+    GLOBAL_PLAYERS.filter((p) => p.currentFranchiseId === f.id)
+      .sort((a, b) => b.ratings.overall - a.ratings.overall)
+      .slice(0, 4)
+      .map((p) => p.id)
+  )
 );
 
 const { registeredPlayers, summary } = generateAuctionRegistrationPool(GLOBAL_PLAYERS, retainedIds);
@@ -207,7 +224,7 @@ assert(comp.isLegal, `Squad of 25 players with 8 overseas is fully legal`);
 // Attempt to add 9th overseas player via canAddPlayerToSquad
 const candidateOverseas = dummyOverseas[0];
 const canAdd9th = canAddPlayerToSquad(testFranchise, candidateOverseas, OFFICIAL_IPL_SQUAD_RULES);
-assert(!canAdd9th.allowed, `9th overseas player is strictly prohibited (${canAdd9th.reason})`);
+assert(!canAdd9th.canAdd, `9th overseas player is strictly prohibited (${canAdd9th.reason})`);
 
 // -----------------------------------------------------------------------------
 // TEST 8: Full Headless Auction Simulation with Squad Completion Guarantee

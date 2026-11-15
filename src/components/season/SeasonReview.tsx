@@ -2,173 +2,216 @@
 
 import React, { useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
-import { Trophy, Award, Flame, Zap, ArrowRight, Sparkles } from 'lucide-react';
-import { getTeamTheme } from '@/lib/theme/team-themes';
+import { ArrowRight } from 'lucide-react';
 import { SeasonTransitionModal } from '@/components/career/SeasonTransitionModal';
+import { MButton, Modal, PageHeader, Panel, TeamCrest } from '@/components/mynba/primitives';
+import { auctionTypeFor, campaignLength, campaignYear, isFinalSeason } from '@/lib/flow/season-flow';
+import type { SeasonAward } from '@/lib/types/game';
+
+const AWARDS: { type: SeasonAward['type']; label: string; unit?: string; color: string }[] = [
+  { type: 'OrangeCap', label: 'Orange Cap', unit: 'runs', color: '#C2561A' },
+  { type: 'PurpleCap', label: 'Purple Cap', unit: 'wickets', color: '#6B4BC4' },
+  { type: 'MVP', label: 'Most Valuable Player', unit: 'pts', color: 'var(--m-green)' },
+  { type: 'EmergingPlayer', label: 'Emerging Player', color: 'var(--m-cyan)' },
+];
 
 export function SeasonReview() {
-  const {
-    currentSeason,
-    seasonAwards,
-    seasonHistory,
-    advanceSeason,
-    setPhase,
-    humanFranchiseId,
-  } = useGameStore();
-
+  const { currentSeason, seasonAwards, seasonHistory, humanFranchiseId, franchises, standings, playoffFixtures, settings } = useGameStore();
   const [isTransitionOpen, setIsTransitionOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const final = isFinalSeason(currentSeason, settings);
+  const year = campaignYear(currentSeason, settings);
 
-  const orangeCap = seasonAwards.find((a) => a.type === 'OrangeCap');
-  const purpleCap = seasonAwards.find((a) => a.type === 'PurpleCap');
-  const mvp = seasonAwards.find((a) => a.type === 'MVP');
-  const emerging = seasonAwards.find((a) => a.type === 'EmergingPlayer');
-
-  const humanTheme = getTeamTheme(humanFranchiseId);
-
-  const handleNextSeason = () => {
-    setIsTransitionOpen(true);
-  };
+  const finalMatch = playoffFixtures.find((f) => f.playoffType === 'Final');
+  const championId = finalMatch?.result?.winnerId;
+  const myPos = standings.findIndex((r) => r.franchiseId === humanFranchiseId) + 1;
+  const myRow = standings.find((r) => r.franchiseId === humanFranchiseId);
+  const teamName = (id?: string) => franchises.find((f) => f.id === id)?.shortName ?? '';
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-      {/* Title */}
-      <div className="text-center space-y-2">
-        <span className="neo-badge px-3 py-1 rounded bg-amber-400 text-black text-xs font-black inline-block">
-          SEASON {currentSeason} WRAP-UP
-        </span>
-        <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
-          IPL DYNASTY HONORS & AWARDS
-        </h2>
-        <p className="text-xs sm:text-sm text-zinc-300 font-medium max-w-lg mx-auto">
-          Celebrating individual brilliance and collective milestones from this unforgettable season of cricket.
-        </p>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <PageHeader
+        kicker={`IPL ${currentSeason} · Year ${year} of ${campaignLength(settings)} · Wrap-up`}
+        title="Season Review"
+        subtitle={
+          final
+            ? `That was the last season of the campaign. Finish it to see how your ${campaignLength(settings)} seasons stack up.`
+            : auctionTypeFor(currentSeason + 1, settings) === 'Mega'
+            ? `The season is over. Next: IPL ${currentSeason + 1}, with a MEGA auction in November ${currentSeason} — retain up to 6, everyone else goes back into the pool.`
+            : `The season is over. Next: IPL ${currentSeason + 1}, with a mini auction in December ${currentSeason} — squads stay together, so trades and smart releases decide who improves.`
+        }
+        right={
+          final ? (
+            <MButton variant="go" size="lg" onClick={() => setSummaryOpen(true)}>
+              Finish campaign <ArrowRight className="w-4 h-4" />
+            </MButton>
+          ) : (
+            <MButton variant="primary" size="lg" onClick={() => setIsTransitionOpen(true)}>
+              Start IPL {currentSeason + 1} offseason <ArrowRight className="w-4 h-4" />
+            </MButton>
+          )
+        }
+      />
+
+      <div className="grid sm:grid-cols-2 gap-5">
+        <Panel title="Champions">
+          {championId ? (
+            <div className="flex items-center gap-4">
+              <TeamCrest franchiseId={championId} size="lg" />
+              <div>
+                <div className="m-display text-3xl italic">{franchises.find((f) => f.id === championId)?.name}</div>
+                {finalMatch?.result?.winMargin && <div className="text-sm text-[var(--m-dim)] mt-1">{finalMatch.result.winMargin} in the Final</div>}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-[var(--m-faint)]">The Final has not been played.</div>
+          )}
+        </Panel>
+        <Panel title="Your season">
+          <div className="flex items-center gap-4">
+            <TeamCrest franchiseId={humanFranchiseId} size="lg" />
+            <div>
+              <div className="m-display text-3xl italic">
+                {championId === humanFranchiseId ? 'Champions' : myPos ? `${ordinal(myPos)} in the league` : '—'}
+              </div>
+              {myRow && (
+                <div className="text-sm text-[var(--m-dim)] mt-1">
+                  {myRow.won} won · {myRow.lost} lost · {myRow.points} points
+                </div>
+              )}
+            </div>
+          </div>
+        </Panel>
       </div>
 
-      {/* Awards Showcase Grid (Neo-Brutalist Trophy Cards) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Orange Cap */}
-        <div className="neo-box p-5 rounded-2xl bg-zinc-950 text-center">
-          <div className="w-12 h-12 rounded-xl border-2 border-black bg-orange-500 text-black flex items-center justify-center mx-auto mb-3 shadow-[2px_2px_0px_#000]">
-            <Flame className="w-6 h-6 stroke-[2.5]" />
-          </div>
-          <div className="neo-badge px-2 py-0.5 rounded bg-orange-500 text-black text-[10px] inline-block">
-            ORANGE CAP
-          </div>
-          <div className="text-lg font-black text-white mt-2 truncate">
-            {orangeCap?.playerName || 'Virat Kohli'}
-          </div>
-          <div className="text-3xl font-black text-orange-400 my-1">
-            {orangeCap?.value || 684} <span className="text-xs font-bold text-zinc-400">runs</span>
-          </div>
-          <p className="text-[11px] text-zinc-400 font-bold mt-1">Leading tournament run-scorer</p>
+      <section>
+        <h2 className="m-label !text-[var(--m-text)] mb-3">Awards</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {AWARDS.map((a) => {
+            const award = seasonAwards.find((x) => x.type === a.type);
+            return (
+              <div key={a.type} className="m-panel px-4 py-4">
+                <div className="m-label !text-[0.62rem]" style={{ color: a.color }}>
+                  {a.label}
+                </div>
+                <div className="font-semibold mt-2 truncate">{award?.playerName ?? 'Not awarded'}</div>
+                {award && (
+                  <div className="text-xs text-[var(--m-faint)] mt-0.5">
+                    {teamName(award.franchiseId)}
+                    {a.unit ? ` · ${award.value} ${a.unit}` : ''}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
+      </section>
 
-        {/* Purple Cap */}
-        <div className="neo-box p-5 rounded-2xl bg-zinc-950 text-center">
-          <div className="w-12 h-12 rounded-xl border-2 border-black bg-purple-500 text-white flex items-center justify-center mx-auto mb-3 shadow-[2px_2px_0px_#000]">
-            <Zap className="w-6 h-6 stroke-[2.5]" />
-          </div>
-          <div className="neo-badge px-2 py-0.5 rounded bg-purple-500 text-white text-[10px] inline-block">
-            PURPLE CAP
-          </div>
-          <div className="text-lg font-black text-white mt-2 truncate">
-            {purpleCap?.playerName || 'Jasprit Bumrah'}
-          </div>
-          <div className="text-3xl font-black text-purple-400 my-1">
-            {purpleCap?.value || 24} <span className="text-xs font-bold text-zinc-400">wickets</span>
-          </div>
-          <p className="text-[11px] text-zinc-400 font-bold mt-1">Most prolific wicket-taker</p>
-        </div>
-
-        {/* Tournament MVP */}
-        <div className="neo-box p-5 rounded-2xl bg-zinc-950 text-center">
-          <div className="w-12 h-12 rounded-xl border-2 border-black bg-amber-400 text-black flex items-center justify-center mx-auto mb-3 shadow-[2px_2px_0px_#000]">
-            <Award className="w-6 h-6 stroke-[2.5]" />
-          </div>
-          <div className="neo-badge px-2 py-0.5 rounded bg-amber-400 text-black text-[10px] inline-block">
-            MOST VALUABLE PLAYER
-          </div>
-          <div className="text-lg font-black text-white mt-2 truncate">
-            {mvp?.playerName || 'Sunil Narine'}
-          </div>
-          <div className="text-3xl font-black text-amber-400 my-1">
-            {mvp?.value || 840} <span className="text-xs font-bold text-zinc-400">pts</span>
-          </div>
-          <p className="text-[11px] text-zinc-400 font-bold mt-1">Highest all-round impact rating</p>
-        </div>
-
-        {/* Emerging Player */}
-        <div className="neo-box p-5 rounded-2xl bg-zinc-950 text-center">
-          <div className="w-12 h-12 rounded-xl border-2 border-black bg-emerald-400 text-black flex items-center justify-center mx-auto mb-3 shadow-[2px_2px_0px_#000]">
-            <Trophy className="w-6 h-6 stroke-[2.5]" />
-          </div>
-          <div className="neo-badge px-2 py-0.5 rounded bg-emerald-400 text-black text-[10px] inline-block">
-            EMERGING SENSATION
-          </div>
-          <div className="text-lg font-black text-white mt-2 truncate">
-            {emerging?.playerName || 'Nitish Kumar Reddy'}
-          </div>
-          <div className="text-2xl font-black text-emerald-400 my-2">
-            BREAKTHROUGH
-          </div>
-          <p className="text-[11px] text-zinc-400 font-bold mt-1">Outstanding young talent</p>
-        </div>
-      </div>
-
-      {/* Dynasty Multi-Season History */}
       {seasonHistory.length > 0 && (
-        <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-          <h3 className="font-black text-sm uppercase text-white mb-3 flex items-center gap-2 pb-2 border-b-2 border-black">
-            <Trophy className="w-4 h-4 text-amber-400 stroke-[2.5]" /> DYNASTY HALL OF CHAMPIONS
-          </h3>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead>
-                <tr className="border-b-2 border-black text-zinc-400 font-black uppercase text-[11px]">
-                  <th className="py-2.5 px-3">YEAR</th>
-                  <th className="py-2.5 px-3">CHAMPIONS</th>
-                  <th className="py-2.5 px-3">RUNNERS-UP</th>
-                  <th className="py-2.5 px-3">ORANGE CAP</th>
-                  <th className="py-2.5 px-3">PURPLE CAP</th>
+        <Panel title="Roll of honour" bodyClassName="p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left m-label !text-[0.62rem] border-b border-[var(--m-line)]">
+                <th className="py-2.5 pl-4">Year</th>
+                <th className="py-2.5">Champions</th>
+                <th className="py-2.5 hidden sm:table-cell">Runners-up</th>
+                <th className="py-2.5 pr-4 hidden md:table-cell">Orange / Purple Cap</th>
+              </tr>
+            </thead>
+            <tbody>
+              {seasonHistory.map((s) => (
+                <tr key={s.year} className="border-b border-[var(--m-line)]/50">
+                  <td className="py-2.5 pl-4 tabular-nums text-[var(--m-dim)]">{s.year}</td>
+                  <td className="py-2.5 font-semibold">{s.championId}</td>
+                  <td className="py-2.5 text-[var(--m-dim)] hidden sm:table-cell">{s.runnerUpId}</td>
+                  <td className="py-2.5 pr-4 text-[var(--m-dim)] hidden md:table-cell">
+                    {s.orangeCapPlayer} / {s.purpleCapPlayer}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800 font-bold">
-                {seasonHistory.map((s) => (
-                  <tr key={s.year} className="hover:bg-zinc-900">
-                    <td className="py-2.5 px-3 font-black text-amber-400">{s.year}</td>
-                    <td className="py-2.5 px-3 font-black text-white">{s.championId}</td>
-                    <td className="py-2.5 px-3 text-zinc-400">{s.runnerUpId}</td>
-                    <td className="py-2.5 px-3 text-orange-400 font-black">{s.orangeCapPlayer}</td>
-                    <td className="py-2.5 px-3 text-purple-400 font-black">{s.purpleCapPlayer}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
       )}
 
-      {/* Advance to Next Season Button */}
-      <div className="text-center pt-4">
-        <button
-          onClick={handleNextSeason}
-          className="neo-btn px-8 py-4 rounded-2xl text-sm font-black uppercase tracking-wider flex items-center gap-2 mx-auto"
-          style={{
-            backgroundColor: humanTheme.primary,
-            color: humanTheme.textLight,
-          }}
-        >
-          <span>ADVANCE TO SEASON {currentSeason + 1}</span>
-          <ArrowRight className="w-4 h-4 stroke-[3]" />
-        </button>
-      </div>
-
-      {/* Season Transition Wizard Modal */}
-      <SeasonTransitionModal
-        isOpen={isTransitionOpen}
-        onClose={() => setIsTransitionOpen(false)}
-      />
+      <SeasonTransitionModal isOpen={isTransitionOpen} onClose={() => setIsTransitionOpen(false)} />
+      <CampaignSummary open={summaryOpen} onClose={() => setSummaryOpen(false)} />
     </div>
+  );
+}
+
+function ordinal(n: number) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/** End of the 3-season cycle: results, titles and the moves you made. */
+function CampaignSummary({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { seasonHistory, humanFranchiseId, franchises, careerState, saveGame, returnToMainMenu, settings } = useGameStore();
+  const human = franchises.find((f) => f.id === humanFranchiseId);
+  const titles = seasonHistory.filter((s) => s.championId === human?.name).length;
+  const myTrades = (careerState.trade?.history ?? []).filter((t) => t.franchiseIds.includes(humanFranchiseId)).length;
+  const mySignings = (careerState.transactions ?? []).filter((t) => t.franchiseId === humanFranchiseId && t.type === 'Signed').length;
+  const best = seasonHistory.length ? Math.min(...seasonHistory.map((s) => s.humanFranchisePosition || 99)) : 0;
+  return (
+    <Modal open={open} onClose={onClose} width="max-w-3xl" labelledBy="campaign-title">
+      <div className="px-6 pt-6 pb-2 flex items-center gap-4">
+        <TeamCrest franchiseId={humanFranchiseId} size="lg" />
+        <div>
+          <div className="m-label">Campaign complete · {campaignLength(settings)} seasons</div>
+          <h2 id="campaign-title" className="m-display text-3xl italic">{human?.name}</h2>
+        </div>
+      </div>
+      <div className="px-6 pb-6 space-y-5 overflow-y-auto m-scroll">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            ['Titles', titles],
+            ['Best finish', best && best < 99 ? ordinal(best) : '—'],
+            ['Trades made', myTrades],
+            ['Auction signings', mySignings],
+          ].map(([k, v]) => (
+            <div key={k as string} className="m-panel px-4 py-3">
+              <div className="m-label !text-[0.62rem]">{k}</div>
+              <div className="font-display font-extrabold text-2xl">{v}</div>
+            </div>
+          ))}
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left m-label !text-[0.62rem] border-b border-[var(--m-line)]">
+              <th className="py-2">Season</th>
+              <th className="py-2">Auction</th>
+              <th className="py-2">Your finish</th>
+              <th className="py-2">Record</th>
+              <th className="py-2">Champions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {seasonHistory.map((s, i) => (
+              <tr key={s.year} className="border-b border-[var(--m-line)]/50">
+                <td className="py-2 tabular-nums">{s.year}</td>
+                <td className="py-2 text-[var(--m-dim)]">{auctionTypeFor(s.year, settings)}</td>
+                <td className="py-2">{s.championId === human?.name ? 'Champions' : ordinal(s.humanFranchisePosition)}</td>
+                <td className="py-2 tabular-nums text-[var(--m-dim)]">{s.humanFranchiseWins}–{s.humanFranchiseLosses}</td>
+                <td className="py-2">{s.championId}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="flex justify-end gap-2">
+          <MButton variant="ghost" onClick={onClose}>Keep browsing</MButton>
+          <MButton
+            variant="primary"
+            onClick={() => {
+              saveGame();
+              returnToMainMenu();
+            }}
+          >
+            Back to main menu
+          </MButton>
+        </div>
+      </div>
+    </Modal>
   );
 }

@@ -5,6 +5,13 @@
 // --- Enums ---
 
 export type PlayerRole = 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper';
+import type {
+  ActivityStatus,
+  RetirementScope,
+  AuctionRegistrationStatus,
+  LastVerifiedMatch,
+} from './retirement';
+
 export type BattingHand = 'Right' | 'Left';
 export type BowlingStyle =
   | 'Right-arm Fast'
@@ -55,7 +62,9 @@ export type GamePhase =
   | 'Playoffs'
   | 'SeasonReview'
   | 'CareerHistory'
-  | 'CareerDashboard';
+  | 'CareerDashboard'
+  | 'TradeCenter'
+  | 'Transactions';
 
 export type GMPersonality = 'Aggressive' | 'YouthFocused' | 'AnalyticsDriven' | 'SuperstarHunter' | 'BalancedBuilder' | 'BowlingFirst' | 'ValueHunter' | 'DomesticFirst' | 'BigSpender' | 'PatientBuilder';
 
@@ -106,6 +115,60 @@ export interface PlayerStats {
   playerOfMatch: number;
 }
 
+export type DevelopmentTrend =
+  | 'Breakout'
+  | 'Domestic breakout'
+  | 'Rising'
+  | 'Steady'
+  | 'Stalled'
+  | 'Bust'
+  | 'Declining';
+
+/** What happened to a player's game over the last off-season. */
+export interface PlayerDevelopment {
+  /** The season these changes take effect for. */
+  season: number;
+  trend: DevelopmentTrend;
+  overallDelta: number;
+  potentialDelta: number;
+  note: string;
+  /** Earned a first India cap on the back of the season. */
+  callUp?: boolean;
+}
+
+/** A CPU front office's auction plan for the coming window; revised after every season. */
+export interface FranchiseStrategy {
+  /** Bidding archetype (see cpu-gm/personalities GM_PERSONALITY_ARCHETYPES). */
+  archetype: string;
+  /** Short label for the plan, e.g. "Rebuild around youth". */
+  plan: string;
+  rationale: string;
+  /** Tactical-role multipliers (0.7 – 1.6) the scouts chase this window. */
+  roleAffinities: Record<string, number>;
+  /** Premium for Indian players (saves overseas slots). */
+  domesticPremium: number;
+  starAggression: number;
+  /** Season this plan was drawn up for. */
+  season: number;
+  history: { season: number; archetype: string; plan: string; finish?: number }[];
+}
+
+/** A player's real IPL record (Cricsheet, 2008–2026), extended as career seasons are played. */
+export interface IplRecord {
+  seasons: number;
+  matches: number;
+  firstSeason: number;
+  lastSeason: number;
+  runs: number;
+  strikeRate: number;
+  battingAvg: number;
+  wickets: number;
+  economy: number;
+  ballsBowled: number;
+  /** Last season the player was in an IPL squad (played or not). */
+  lastSquadSeason?: number;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -130,6 +193,10 @@ export interface Player {
 
   stats: PlayerStats;
   ratings: PlayerRatings;
+  /** IPL experience; undefined = has never played an IPL match. */
+  ipl?: IplRecord;
+  /** Last off-season's development verdict (breakout, bust, domestic breakout, call-up…). */
+  development?: PlayerDevelopment;
   recentForm: number; // 0-100
   fitnessLevel: number; // 0-100
   injuryRisk: number; // 0-100
@@ -145,6 +212,25 @@ export interface Player {
   ratingUpdatedAt?: string;
   dataSource?: string;
   dataQualityStatus?: 'Verified-BallByBall' | 'Match-Scorecard' | 'Competition-Aggregate' | 'Calibrated-Prior';
+
+  // Retirement & Auction Eligibility Status Fields
+  internationalStatus?: ActivityStatus;
+  domesticStatus?: ActivityStatus;
+  franchiseStatus?: ActivityStatus;
+  iplStatus?: ActivityStatus;
+  professionalStatus?: ActivityStatus;
+  isRetired?: boolean; // Convenience flag for professional retirement
+  dateOfRetirement?: string; // ISO date e.g. '2021-11-19'
+  retirementScope?: RetirementScope;
+  auctionRegistrationStatus?: AuctionRegistrationStatus;
+  seasonEligibility?: Record<number, boolean>;
+  lastVerifiedMatch?: LastVerifiedMatch;
+  lastVerificationDate?: string;
+  verificationSource?: string;
+  verificationConfidence?: number;
+  conflictingReports?: boolean;
+  manualReviewRequired?: boolean;
+  retirementNotes?: string;
 
   basePrice: number; // in lakhs
   currentContractValue: number; // in lakhs
@@ -187,6 +273,8 @@ export interface Franchise {
 
   isHumanControlled: boolean;
   gmPersonality: GMPersonality;
+  /** Dynamic front-office plan (CPU teams); absent = the franchise's IRL default. */
+  strategy?: FranchiseStrategy;
   cpuDifficulty: CPUDifficulty;
 
   // Team strengths (calculated)
@@ -263,6 +351,9 @@ export interface AuctionSession {
   currentSetIndex?: number;
   sets?: import('./auction-set').AuctionSet[];
   setAssignments?: Record<string, import('./auction-set').AuctionPlayerAssignment>;
+
+  /** Market price index for this auction (league money vs. pool worth); 1 = neutral. */
+  priceIndex?: number;
 }
 
 export interface RetentionRule {
@@ -416,6 +507,8 @@ export interface PlayingXI {
 
 export interface GameSettings {
   startingSeason: number;
+  /** 'custom' = your own 3-season mega cycle; 'irl' = follow the real IPL auction calendar. */
+  cycleMode?: 'custom' | 'irl';
   auctionType: AuctionType;
   rulesPreset: 'Official' | 'Custom';
   cpuDifficulty: CPUDifficulty;
@@ -442,12 +535,12 @@ export interface GameState {
   retentionComplete: boolean;
 
   // Registration & Scouting
-  registrationPool?: import('./registration').RegisteredPlayer[];
-  registrationSummary?: import('./registration').RegistrationSummary | null;
-  franchiseShortlists?: Record<string, import('./scouting').FranchiseShortlist>;
-  finalAuctionPool?: import('./registration').RegisteredPlayer[];
-  auctionSets?: Record<string, import('./registration').RegisteredPlayer[]>;
-  squadRules?: import('./squad-rules').SquadRules;
+  registrationPool: import('./registration').RegisteredPlayer[];
+  registrationSummary: import('./registration').RegistrationSummary | null;
+  franchiseShortlists: Record<string, import('./scouting').FranchiseShortlist>;
+  finalAuctionPool: import('./registration').RegisteredPlayer[];
+  auctionSets: Record<string, import('./registration').RegisteredPlayer[]>;
+  squadRules: import('./squad-rules').SquadRules;
 
   // Auction
   auctionSession: AuctionSession | null;

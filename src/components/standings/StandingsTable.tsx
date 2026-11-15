@@ -2,123 +2,67 @@
 
 import React from 'react';
 import { useGameStore } from '@/lib/store/game-store';
-import { Trophy } from 'lucide-react';
-import { getTeamTheme } from '@/lib/theme/team-themes';
+import { Panel, TeamCrest, Empty } from '@/components/mynba/primitives';
 
 export function StandingsTable() {
-  const { standings, franchises, humanFranchiseId } = useGameStore();
-  const humanTheme = getTeamTheme(humanFranchiseId);
+  const { standings, franchises, humanFranchiseId, currentSeason } = useGameStore();
 
   return (
-    <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-black">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-8 h-8 rounded-lg border-2 border-black flex items-center justify-center shadow-[1.5px_1.5px_0px_#000]"
-            style={{
-              backgroundColor: humanTheme.primary,
-              color: humanTheme.textLight,
-            }}
-          >
-            <Trophy className="w-4 h-4 stroke-[2.5]" />
-          </div>
-          <h3 className="font-black text-base uppercase text-white tracking-tight">
-            IPL 2026 POINTS TABLE
-          </h3>
-        </div>
-        <div className="neo-badge px-2.5 py-1 rounded bg-black text-emerald-400 text-xs">
-          TOP 4 QUALIFY FOR PLAYOFFS
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs text-left">
+    <Panel
+      title={`Points table ${currentSeason}`}
+      right={<span className="text-xs text-[var(--m-faint)]">Top 4 reach the playoffs</span>}
+      bodyClassName="p-0"
+    >
+      {standings.length === 0 ? (
+        <Empty title="No table yet" hint="The table appears once you confirm your XI and the league begins." />
+      ) : (
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b-2 border-black text-zinc-400 font-black uppercase tracking-wider text-[11px]">
-              <th className="py-2.5 px-3">POS</th>
-              <th className="py-2.5 px-3">TEAM</th>
-              <th className="py-2.5 px-3 text-center">P</th>
-              <th className="py-2.5 px-3 text-center">W</th>
-              <th className="py-2.5 px-3 text-center">L</th>
-              <th className="py-2.5 px-3 text-center">NRR</th>
-              <th className="py-2.5 px-3 text-right">PTS</th>
+            <tr className="text-left m-label !text-[0.62rem] border-b border-[var(--m-line)]">
+              <th className="py-2.5 pl-4 w-10">#</th>
+              <th className="py-2.5">Team</th>
+              <th className="py-2.5 text-center w-10">P</th>
+              <th className="py-2.5 text-center w-10">W</th>
+              <th className="py-2.5 text-center w-10">L</th>
+              <th className="py-2.5 text-right w-20 hidden sm:table-cell">NRR</th>
+              <th className="py-2.5 pr-4 text-right w-14">Pts</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800 font-bold">
+          <tbody>
             {standings.map((entry, idx) => {
               const team = franchises.find((f) => f.id === entry.franchiseId);
-              const fTheme = getTeamTheme(entry.franchiseId);
               const isHuman = entry.franchiseId === humanFranchiseId;
-              const isTop4 = idx < 4;
-
               return (
                 <tr
                   key={entry.franchiseId}
-                  className={`transition-all ${
-                    isHuman
-                      ? 'bg-zinc-900 text-white font-black'
-                      : 'hover:bg-zinc-900/60 text-zinc-300'
-                  } ${idx === 3 ? 'border-b-2 border-emerald-500' : ''}`}
+                  className={`${isHuman ? 'bg-ink/[0.06]' : ''} ${
+                    idx === 3 ? 'border-b border-[var(--m-green)]/50' : 'border-b border-[var(--m-line)]/50'
+                  }`}
                 >
-                  <td className="py-3 px-3">
-                    <span
-                      className={`inline-flex items-center justify-center w-6 h-6 rounded-md text-[11px] font-black border-2 border-black ${
-                        isTop4
-                          ? 'bg-emerald-400 text-black shadow-[1.5px_1.5px_0px_#000]'
-                          : 'bg-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
+                  <td className={`py-2.5 pl-4 font-display font-extrabold tabular-nums ${idx < 4 ? 'text-[var(--m-green)]' : 'text-[var(--m-faint)]'}`}>
+                    {idx + 1}
                   </td>
-
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="w-7 h-7 rounded-lg border-2 border-black flex items-center justify-center font-black text-[10px] shadow-[1.5px_1.5px_0px_#000]"
-                        style={{
-                          backgroundColor: fTheme.primary,
-                          color: fTheme.textLight,
-                        }}
-                      >
-                        {team?.abbreviation}
-                      </span>
-                      <span className="font-black text-xs text-white truncate max-w-[150px]">
-                        {team?.name}
-                      </span>
-                      {isHuman && (
-                        <span className="neo-badge text-[9px] px-1.5 py-0.2 rounded bg-amber-400 text-black font-black">
-                          YOU
-                        </span>
-                      )}
+                  <td className="py-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <TeamCrest franchiseId={entry.franchiseId} size="xs" />
+                      <span className={`truncate ${isHuman ? 'font-semibold' : ''}`}>{team?.name}</span>
+                      {isHuman && <span className="m-label !text-[0.55rem] !text-[var(--m-text)]">You</span>}
                     </div>
                   </td>
-
-                  <td className="py-3 px-3 text-center text-zinc-400 font-black">{entry.played}</td>
-                  <td className="py-3 px-3 text-center text-emerald-400 font-black">{entry.won}</td>
-                  <td className="py-3 px-3 text-center text-red-400 font-black">{entry.lost}</td>
-                  <td
-                    className={`py-3 px-3 text-center font-mono font-black ${
-                      entry.netRunRate > 0
-                        ? 'text-emerald-400'
-                        : entry.netRunRate < 0
-                        ? 'text-red-400'
-                        : 'text-zinc-500'
-                    }`}
-                  >
-                    {entry.netRunRate > 0 ? `+${entry.netRunRate.toFixed(3)}` : entry.netRunRate.toFixed(3)}
+                  <td className="py-2.5 text-center tabular-nums text-[var(--m-dim)]">{entry.played}</td>
+                  <td className="py-2.5 text-center tabular-nums">{entry.won}</td>
+                  <td className="py-2.5 text-center tabular-nums text-[var(--m-dim)]">{entry.lost}</td>
+                  <td className="py-2.5 text-right tabular-nums text-[var(--m-dim)] hidden sm:table-cell">
+                    {entry.netRunRate > 0 ? '+' : ''}
+                    {entry.netRunRate.toFixed(3)}
                   </td>
-                  <td className="py-3 px-3 text-right">
-                    <span className="neo-badge px-2.5 py-0.5 rounded bg-black text-amber-400 text-xs font-black">
-                      {entry.points}
-                    </span>
-                  </td>
+                  <td className="py-2.5 pr-4 text-right font-display font-extrabold text-base tabular-nums">{entry.points}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
-    </div>
+      )}
+    </Panel>
   );
 }

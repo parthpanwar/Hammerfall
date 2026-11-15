@@ -11,7 +11,6 @@ import { progressAllPlayers } from './player-progression';
 import { processSeasonRetirements } from './retirement-engine';
 import { generateRookieDraftClass } from './player-generator';
 import {
-  getAuctionTypeForSeason,
   getLeaguePurseForSeason,
   advanceContractsForNewSeason,
   createInitialContracts,
@@ -19,6 +18,10 @@ import {
 import { evaluateCpuSeasonAndPlan, executeCpuPreAuctionDecisions } from './cpu-franchise-career';
 import { recordSeasonForFranchises, recordSeasonForPlayers } from './history-tracker';
 import { generateSeasonStorylines } from './storylines';
+import { applyIplSeason } from './ipl-experience';
+import { auctionTypeFor } from '@/lib/flow/season-flow';
+import { buildLeagueContext, LEGACY_PERSONALITY, planNextStrategy, type StrategyReview } from '../cpu-gm/strategy-planner';
+import type { GMPersonalityArchetype } from '../cpu-gm/personalities';
 
 export interface SeasonTransitionResult {
   updatedGameState: GameState;
@@ -29,6 +32,10 @@ export interface SeasonTransitionResult {
   storylines: LeagueStoryline[];
   upcomingAuctionType: AuctionType;
   newLeaguePurse: number;
+  /** Players each CPU released ahead of a mini auction. */
+  cpuReleases: { franchiseId: string; player: Player }[];
+  /** Each CPU front office's review of the season and its plan for the next window. */
+  strategyReviews: StrategyReview[];
 }
 
 /**
@@ -40,7 +47,8 @@ export function executeSeasonAdvance(
 ): SeasonTransitionResult {
   const currentSeason = gameState.currentSeason;
   const nextSeason = currentSeason + 1;
-  const upcomingAuctionType = getAuctionTypeForSeason(nextSeason);
+  // One campaign = one mega cycle: year 1 mega, years 2-3 mini.
+  const upcomingAuctionType = auctionTypeFor(nextSeason, gameState.settings);
   const newLeaguePurse = getLeaguePurseForSeason(nextSeason);
 
   // 1. Identify Champion and Runner-up
@@ -77,11 +85,15 @@ export function executeSeasonAdvance(
     currentSeason
   );
 
-  // 3. Player Development & Aging
+  // 3. IPL experience (seasons, matches, recency) feeds next auction's valuations.
+  const experiencedPlayers = applyIplSeason(gameState.allPlayers, gameState.franchises, gameState.playerSeasonStats, currentSeason);
+
+  // 3b. Player Development & Aging
   const { updatedPlayers: developedPlayers, deltas: progressionDeltas } = progressAllPlayers(
-    gameState.allPlayers,
+    experiencedPlayers,
     gameState.playerSeasonStats,
-    nextSeason
+    nextSeason,
+    gameState.settings.seed ?? 0
   );
 
   // 4. Probabilistic Retirements
@@ -121,6 +133,15 @@ export function executeSeasonAdvance(
   const updatedFranchises: Franchise[] = [];
   let updatedContractsPostAuction = { ...advancedContracts };
   const releasedPool: Player[] = [];
+  const cpuReleases: { franchiseId: string; player: Player }[] = [];
+  const strategyReviews: StrategyReview[] = [];
+  // Front offices compare their squads with the rest of the league (after development).
+  const leagueCtx = buildLeagueContext(
+    gameState.franchises.map((f) => ({
+      ...f,
+      players: f.players.filter((p) => !retiredPlayers.some((rp) => rp.id === p.id)).map((p) => developedPlayers.find((dp) => dp.id === p.id) || p),
+    }))
+  );
 
   for (const franchise of gameState.franchises) {
     // Sync franchise players with developed, non-retired players
@@ -151,9 +172,24 @@ export function executeSeasonAdvance(
         nextSeason
       );
 
-      syncedFranchise = cpuDecisions.updatedFranchise;
+      // Review the season and draw up next window's auction plan.
+      const review = planNextStrategy(
+        syncedFranchise,
+        gameState.standings,
+        currentSeason,
+        { champion: franchise.id === championId, finalist: franchise.id === runnerUpId },
+        leagueCtx,
+        gameState.settings.seed ?? 0
+      );
+      strategyReviews.push(review);
+      syncedFranchise = {
+        ...cpuDecisions.updatedFranchise,
+        strategy: review.strategy,
+        gmPersonality: LEGACY_PERSONALITY[review.to as GMPersonalityArchetype],
+      };
       updatedContractsPostAuction = cpuDecisions.updatedContracts;
       releasedPool.push(...cpuDecisions.releasedPlayers);
+      cpuReleases.push(...cpuDecisions.releasedPlayers.map((player) => ({ franchiseId: franchise.id, player })));
     } else {
       // Human franchise: in Mini auction keep roster until user releases; in Mega auction reset to retentions
       if (upcomingAuctionType === 'Mega') {
@@ -214,6 +250,8 @@ export function executeSeasonAdvance(
     storylines: newStorylines,
     upcomingAuctionType,
     newLeaguePurse,
+    cpuReleases,
+    strategyReviews,
   };
 }
 

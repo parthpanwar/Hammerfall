@@ -35,6 +35,8 @@ import {
   evaluateFranchiseFit,
 } from '../../intelligence/valuation/player-intelligence';
 import type { PlayerIntelligenceDossier } from '../../intelligence/types';
+import { unflooredMarketValue } from '../auction/market-value';
+import { strategyFit } from './advanced-valuation';
 import {
   getFranchiseActivePersonality,
   evolveFranchisePersonality,
@@ -337,7 +339,7 @@ export function decideCPUBid(
   const player = currentLot.player;
   const minBid = getMinimumBid(session);
   const difficulty = franchise.cpuDifficulty || 'Normal';
-  const personalityType = getFranchiseActivePersonality(session.id, franchise.id);
+  const personalityType = getFranchiseActivePersonality(session.id, franchise);
 
   // 1. Legality check
   if (!canFranchiseBid(franchise, session)) {
@@ -353,7 +355,7 @@ export function decideCPUBid(
   const dossier = generatePlayerIntelligenceDossier(player);
   const tacticalRoles = getPlayerTacticalRoles(player);
   const tacticalNeed = evaluateTacticalNeed(franchise, player);
-  const xiImprovement = calculatePlayingXiImprovement(franchise, player);
+  const xiImprovement = calculatePlayingXiImprovement(franchise, player, session);
   const depthImprovement = calculateSquadDepthImprovement(franchise, player);
   const alternatives = evaluateAlternativeOptions(player, session);
   const openSlots = Math.max(1, franchise.minSquadSize - franchise.players.length);
@@ -396,8 +398,23 @@ export function decideCPUBid(
     cpuDifficulty: difficulty,
   };
 
+  // A young Indian with real upside or a breakout domestic season is a development
+  // pick — worth a slot even in a deep squad (that is how IPL finds its next stars).
+  const devPicksMade = session.soldPlayers.filter(
+    (s) => s.franchiseId === franchise.id && franchise.players.some((p) => p.id === s.playerId && p.nationality === 'Indian' && p.age <= 24 && p.status === 'Uncapped')
+  ).length;
+  const devPick =
+    devPicksMade < 2 &&
+    player.nationality === 'Indian' &&
+    player.age <= 24 &&
+    (player.ratings.potential - player.ratings.overall >= 10 || player.development?.trend === 'Domestic breakout');
+
   // If team has zero tactical need and squad has fulfilled minimum squad size, pass
-  if (tacticalNeed === 0 && franchise.players.length >= franchise.minSquadSize) {
+  // Full on roles and no better than what's there: pass. A clear XI upgrade is
+  // still worth a bid even when the squad is legally complete (mini auctions).
+  // Money in the bank still buys a quality squad player (injury cover, rotation).
+  const cashRichQuality = franchise.remainingPurse >= 800 && player.ratings.overall >= 74 && franchise.players.length < 24;
+  if (tacticalNeed === 0 && xiImprovement === 0 && !devPick && !cashRichQuality && franchise.players.length >= franchise.minSquadSize) {
     const reason = 'No tactical role deficit; squad depth satisfied.';
     recordDecisionLog(session.id, {
       ...logBase,
@@ -415,6 +432,41 @@ export function decideCPUBid(
     };
   }
 
+  // Overseas slots are for players who start. A bench overseas player only makes
+  // sense late, as cover — never as the 5th–8th overseas name in the opening sets.
+  const overseasHeld = franchise.players.filter((p) => p.nationality === 'Overseas').length;
+  const progress = session.playerPool.length ? session.currentPlayerIndex / session.playerPool.length : 1;
+  // Overseas buying is paced across the auction: the eight slots are not all spent
+  // in the opening sets (clear stars excepted).
+  const overseasAllowed = Math.min(franchise.maxOverseas ?? 8, 4 + Math.floor(progress * 10));
+  if (
+    player.nationality === 'Overseas' &&
+    ((xiImprovement === 0 && (overseasHeld >= 6 || progress < 0.55)) || (overseasHeld >= overseasAllowed && xiImprovement < 18))
+  ) {
+    const reason = `Would not make the XI's four overseas spots (${overseasHeld} overseas held); saving the slot.`;
+    recordDecisionLog(session.id, { ...logBase, maxValuationLakhs: 0, decision: 'PASS', reason });
+    return { bid: false, maxBid: 0, reason, tacticalRoles, intelligenceDossier: dossier };
+  }
+
+  // Squads that are already deep stop buying backups and keep the money for
+  // genuine upgrades (real minis end around 21–23 players, megas 23–25).
+  // A team still sitting on ₹8 Cr+ keeps adding useful players rather than bank it.
+  const depthCeiling = session.auctionType === 'Mini' ? (franchise.remainingPurse >= 800 ? 24 : 22) : 24;
+  if (xiImprovement === 0 && franchise.players.length >= depthCeiling && !(devPick && franchise.players.length < 24)) {
+    const reason = `Squad already ${franchise.players.length} deep; saving purse for upgrades.`;
+    recordDecisionLog(session.id, { ...logBase, maxValuationLakhs: 0, decision: 'PASS', reason });
+    return { bid: false, maxBid: 0, reason, tacticalRoles, intelligenceDossier: dossier };
+  }
+
+  // Not worth his base price to anyone: he goes unsold (a team still short of the
+  // legal 18 will take him at base).
+  const worth = unflooredMarketValue(player, session) * strategyFit(franchise, player);
+  if (worth < player.basePrice * 0.9 && franchise.players.length >= 16) {
+    const reason = `Valued at ${Math.round(worth)}L — below his ${player.basePrice}L base price.`;
+    recordDecisionLog(session.id, { ...logBase, maxValuationLakhs: Math.round(worth), decision: 'PASS', reason });
+    return { bid: false, maxBid: 0, reason, tacticalRoles, intelligenceDossier: dossier };
+  }
+
   // 4. Calculate Advanced Spending Limit with Data-Driven Valuation
   let spendingLimit = calculateAdvancedSpendingLimit(franchise, player, session, dossier, difficulty);
 
@@ -423,7 +475,9 @@ export function decideCPUBid(
   if (franchise.players.length === 14 || (session.round >= 2 && franchise.players.length < 15)) {
     const reserveForOthers = Math.max(0, 15 - franchise.players.length - 1) * 50;
     const maxSafeForLegalSquad = Math.max(player.basePrice, franchise.remainingPurse - reserveForOthers);
-    spendingLimit = Math.max(spendingLimit, maxSafeForLegalSquad);
+    // Make sure the team bids (at least a little over base) — not that it throws its
+    // whole purse at whoever happens to be nominated next.
+    spendingLimit = Math.max(spendingLimit, Math.min(maxSafeForLegalSquad, player.basePrice + 50));
   }
 
   // Price exceeds spending limit

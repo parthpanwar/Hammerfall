@@ -12,7 +12,7 @@ import {
   TARGET_ROLE_COVERAGE,
 } from './tactical-roles';
 import {
-  FRANCHISE_GM_PROFILES,
+  getActiveGMProfile,
   GM_PERSONALITY_ARCHETYPES,
   getFranchiseActivePersonality,
   evolveFranchisePersonality,
@@ -82,8 +82,8 @@ export function initializeDynamicShortlists(session: AuctionSession, rng: Seeded
   const pool = session.playerPool;
 
   for (const franchise of session.franchises) {
-    const profile = FRANCHISE_GM_PROFILES[franchise.id];
-    const personality = GM_PERSONALITY_ARCHETYPES[profile?.initialArchetype || 'Balanced squad builder'];
+    const profile = getActiveGMProfile(franchise);
+    const personality = GM_PERSONALITY_ARCHETYPES[profile.currentArchetype] ?? GM_PERSONALITY_ARCHETYPES['Balanced squad builder'];
 
     // Group available players by tactical role
     const candidatesByRole: Record<TacticalRole, { player: Player; score: number }[]> = {} as any;

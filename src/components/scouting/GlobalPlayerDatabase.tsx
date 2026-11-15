@@ -16,15 +16,18 @@ import {
   ExternalLink,
   ChevronRight,
   Database,
+  X,
 } from 'lucide-react';
 import type { Player } from '@/lib/types/game';
 import type { ShortlistPriority } from '@/lib/types/scouting';
 
 interface GlobalPlayerDatabaseProps {
   onClose?: () => void;
+  isOpen?: boolean;
+  players?: Player[];
 }
 
-export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
+export function GlobalPlayerDatabase({ onClose, isOpen = true, players }: GlobalPlayerDatabaseProps) {
   const {
     allPlayers,
     humanFranchiseId,
@@ -32,6 +35,8 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
     updateHumanShortlist,
     removeHumanShortlist,
   } = useGameStore();
+
+  if (!isOpen) return null;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -87,18 +92,18 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
   return (
     <div className="space-y-5">
       {/* Top Banner */}
-      <div className="neo-box p-5 rounded-2xl bg-zinc-900 border-[2px] border-black flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="terminal-card p-5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-amber-400" />
-            <h2 className="text-xl font-black text-white uppercase tracking-tight">
+            <Database className="w-5 h-5 text-[var(--m-accent-ink)]" />
+            <h2 className="text-xl font-bold text-[var(--m-text)] uppercase tracking-tight font-heading">
               Global Player Registry
             </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-400 text-black border border-black">
+            <span className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30">
               {allPlayers.length} Cricketers
             </span>
           </div>
-          <p className="text-xs text-zinc-400 max-w-xl">
+          <p className="text-xs text-[var(--m-dim)] max-w-xl font-medium">
             100% authentic cricketers reconciled with Cricsheet registries, BCCI master lists, and international
             T20 league appearances.
           </p>
@@ -107,7 +112,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
         {onClose && (
           <button
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-xs uppercase"
+            className="px-3.5 py-1.5 rounded-lg bg-[var(--m-raised)] hover:bg-[var(--m-line)] text-[var(--m-text)] font-bold text-xs uppercase border border-[var(--m-line)] transition-colors"
           >
             Close
           </button>
@@ -115,16 +120,16 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 rounded-xl bg-zinc-900 border-[2px] border-black space-y-3">
+      <div className="terminal-card p-4 rounded-xl space-y-3">
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[var(--m-dim)] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search across 1,250 verified cricketers by name or Cricsheet ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-black border border-zinc-800 rounded-lg text-xs font-bold text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+              className="terminal-input w-full pl-9 pr-4 py-2 rounded-lg text-xs"
             />
           </div>
 
@@ -132,7 +137,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-3 py-2 bg-black border border-zinc-800 rounded-lg text-xs font-bold text-white focus:outline-none"
+              className="terminal-input px-3 py-2 rounded-lg text-xs cursor-pointer"
             >
               <option value="All">All Roles</option>
               <option value="Batter">Batter</option>
@@ -144,7 +149,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
             <select
               value={nationalityFilter}
               onChange={(e) => setNationalityFilter(e.target.value)}
-              className="px-3 py-2 bg-black border border-zinc-800 rounded-lg text-xs font-bold text-white focus:outline-none"
+              className="terminal-input px-3 py-2 rounded-lg text-xs cursor-pointer"
             >
               <option value="All">All Nationalities</option>
               <option value="Indian">Indian (623)</option>
@@ -154,7 +159,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-black border border-zinc-800 rounded-lg text-xs font-bold text-white focus:outline-none"
+              className="terminal-input px-3 py-2 rounded-lg text-xs cursor-pointer"
             >
               <option value="All">All Statuses</option>
               <option value="Capped">Capped (471)</option>
@@ -164,7 +169,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
             <select
               value={countryFilter}
               onChange={(e) => setCountryFilter(e.target.value)}
-              className="px-3 py-2 bg-black border border-zinc-800 rounded-lg text-xs font-bold text-white focus:outline-none"
+              className="terminal-input px-3 py-2 rounded-lg text-xs cursor-pointer"
             >
               <option value="All">All Countries ({countries.length})</option>
               {countries.map((c) => (
@@ -176,21 +181,21 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-[11px] text-zinc-400 font-medium">
+        <div className="flex items-center justify-between text-[11px] text-[var(--m-dim)] font-medium">
           <div>
-            Showing <span className="text-white font-black">{filteredPlayers.length}</span> matching cricketers
+            Showing <span className="text-[var(--m-text)] font-bold">{filteredPlayers.length}</span> matching cricketers
           </div>
-          <div className="text-zinc-500">
-            Click table headers to sort • Click row to inspect analytics
+          <div className="text-[var(--m-dim)]/70">
+            Click table headers to sort • Click row to inspect dossier
           </div>
         </div>
       </div>
 
       {/* Players Table */}
-      <div className="neo-box rounded-xl bg-zinc-900 border-[2px] border-black overflow-hidden shadow-[4px_4px_0px_#000]">
+      <div className="terminal-card rounded-xl overflow-hidden border border-[var(--m-line)]">
         <div className="overflow-x-auto max-h-[600px]">
           <table className="w-full text-left text-xs">
-            <thead className="sticky top-0 bg-black/95 backdrop-blur border-b border-zinc-800 text-zinc-400 uppercase font-black text-[10px] tracking-wider z-10">
+            <thead className="sticky top-0 bg-[var(--m-panel)] border-b border-[var(--m-line)] text-[var(--m-dim)] uppercase font-bold text-[10px] tracking-wider z-10">
               <tr>
                 <th className="py-3 px-4">Player / Cricsheet ID</th>
                 <th className="py-3 px-3">Role</th>
@@ -198,7 +203,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                 <th className="py-3 px-3">Status</th>
                 <th
                   onClick={() => handleSort('overall')}
-                  className="py-3 px-3 text-center cursor-pointer hover:text-white"
+                  className="py-3 px-3 text-center cursor-pointer hover:text-[var(--m-text)]"
                 >
                   <div className="flex items-center justify-center gap-1">
                     OVR <ArrowUpDown className="w-3 h-3" />
@@ -206,7 +211,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                 </th>
                 <th
                   onClick={() => handleSort('batting')}
-                  className="py-3 px-3 text-center cursor-pointer hover:text-white"
+                  className="py-3 px-3 text-center cursor-pointer hover:text-[var(--m-text)]"
                 >
                   <div className="flex items-center justify-center gap-1">
                     BAT <ArrowUpDown className="w-3 h-3" />
@@ -214,7 +219,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                 </th>
                 <th
                   onClick={() => handleSort('bowling')}
-                  className="py-3 px-3 text-center cursor-pointer hover:text-white"
+                  className="py-3 px-3 text-center cursor-pointer hover:text-[var(--m-text)]"
                 >
                   <div className="flex items-center justify-center gap-1">
                     BOWL <ArrowUpDown className="w-3 h-3" />
@@ -222,7 +227,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                 </th>
                 <th
                   onClick={() => handleSort('form')}
-                  className="py-3 px-3 text-center cursor-pointer hover:text-white"
+                  className="py-3 px-3 text-center cursor-pointer hover:text-[var(--m-text)]"
                 >
                   <div className="flex items-center justify-center gap-1">
                     Form <ArrowUpDown className="w-3 h-3" />
@@ -230,7 +235,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                 </th>
                 <th
                   onClick={() => handleSort('basePrice')}
-                  className="py-3 px-3 text-right cursor-pointer hover:text-white"
+                  className="py-3 px-3 text-right cursor-pointer hover:text-[var(--m-text)]"
                 >
                   <div className="flex items-center justify-end gap-1">
                     Base Price <ArrowUpDown className="w-3 h-3" />
@@ -239,68 +244,70 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                 <th className="py-3 px-4 text-center">Shortlist Tier</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60 font-medium">
-              {filteredPlayers.slice(0, 150).map((player) => {
+            <tbody className="divide-y divide-[var(--m-line)]/60">
+              {filteredPlayers.slice(0, 150).map((player, idx) => {
                 const entry = humanList[player.id];
                 return (
                   <tr
                     key={player.id}
                     onClick={() => setScoutingPlayer(player)}
-                    className="hover:bg-zinc-800/40 transition-colors cursor-pointer"
+                    className={`hover:bg-[var(--m-raised)] transition-colors cursor-pointer ${
+                      idx % 2 === 0 ? 'bg-[var(--m-panel)]' : 'bg-[var(--m-panel)]'
+                    }`}
                   >
                     <td className="py-2.5 px-4">
-                      <div className="font-black text-white text-sm">{player.name}</div>
-                      <div className="text-[10px] text-zinc-500 font-mono">
+                      <div className="font-bold text-[var(--m-text)] text-sm">{player.name}</div>
+                      <div className="text-[10px] text-[var(--m-dim)] font-mono">
                         {player.cricsheetId || player.id} • Age {player.age}
                       </div>
                     </td>
 
                     <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-zinc-800 border border-zinc-700 text-zinc-300">
+                      <span className="telemetry-badge-sm bg-[var(--m-raised)] border border-[var(--m-line)] text-[var(--m-dim)]">
                         {player.role}
                       </span>
                     </td>
 
-                    <td className="py-2.5 px-3 font-bold text-zinc-200">
+                    <td className="py-2.5 px-3 font-semibold text-[var(--m-text)]">
                       {player.country}
                     </td>
 
                     <td className="py-2.5 px-3">
                       <span
-                        className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${
+                        className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
                           player.status === 'Capped'
-                            ? 'bg-amber-950/60 text-amber-400 border border-amber-500/40'
-                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                            ? 'bg-[var(--m-gold)]/15 text-[var(--m-gold)] border border-[var(--m-gold)]/30'
+                            : 'bg-[var(--m-raised)] text-[var(--m-dim)] border border-[var(--m-line)]'
                         }`}
                       >
                         {player.status}
                       </span>
                     </td>
 
-                    <td className="py-2.5 px-3 text-center font-black text-amber-400 text-sm">
+                    <td className="py-2.5 px-3 text-center font-bold text-[var(--m-gold)] text-sm tabular-nums">
                       {player.ratings.overall}
                     </td>
-                    <td className="py-2.5 px-3 text-center text-zinc-300 font-bold">
+                    <td className="py-2.5 px-3 text-center text-[var(--m-text)] font-medium tabular-nums">
                       {player.ratings.batting}
                     </td>
-                    <td className="py-2.5 px-3 text-center text-zinc-300 font-bold">
+                    <td className="py-2.5 px-3 text-center text-[var(--m-text)] font-medium tabular-nums">
                       {player.ratings.bowling}
                     </td>
-                    <td className="py-2.5 px-3 text-center font-bold">
+                    <td className="py-2.5 px-3 text-center font-semibold tabular-nums">
                       <span
                         className={
                           player.recentForm >= 75
-                            ? 'text-emerald-400'
+                            ? 'text-[var(--m-green)]'
                             : player.recentForm >= 50
-                            ? 'text-zinc-300'
-                            : 'text-zinc-500'
+                            ? 'text-[var(--m-text)]'
+                            : 'text-[var(--m-dim)]'
                         }
                       >
                         {player.recentForm}
                       </span>
                     </td>
 
-                    <td className="py-2.5 px-3 text-right font-black text-emerald-400">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-[var(--m-green)]">
                       {formatPrice(player.basePrice)}
                     </td>
 
@@ -308,30 +315,30 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => updateHumanShortlist(player.id, 'PriorityA')}
-                          className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-colors ${
                             entry?.priority === 'PriorityA'
-                              ? 'bg-red-500 text-black'
-                              : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                              ? 'bg-[var(--m-red)] text-white'
+                              : 'bg-[var(--m-raised)] text-[var(--m-dim)] hover:text-[var(--m-text)]'
                           }`}
                         >
                           A
                         </button>
                         <button
                           onClick={() => updateHumanShortlist(player.id, 'PriorityB')}
-                          className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-colors ${
                             entry?.priority === 'PriorityB'
-                              ? 'bg-amber-400 text-black'
-                              : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                              ? 'bg-[var(--m-gold)] text-white font-extrabold'
+                              : 'bg-[var(--m-raised)] text-[var(--m-dim)] hover:text-[var(--m-text)]'
                           }`}
                         >
                           B
                         </button>
                         <button
                           onClick={() => updateHumanShortlist(player.id, 'PriorityC')}
-                          className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-colors ${
                             entry?.priority === 'PriorityC'
-                              ? 'bg-sky-400 text-black'
-                              : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                              ? 'bg-[var(--m-accent-ink)] text-white'
+                              : 'bg-[var(--m-raised)] text-[var(--m-dim)] hover:text-[var(--m-text)]'
                           }`}
                         >
                           C
@@ -339,7 +346,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
                         {entry && (
                           <button
                             onClick={() => removeHumanShortlist(player.id)}
-                            className="px-1.5 py-0.5 rounded text-[9px] text-zinc-500 hover:text-red-400 font-bold"
+                            className="px-1.5 py-0.5 rounded text-[9px] text-[var(--m-dim)] hover:text-[var(--m-red)] font-bold transition-colors"
                           >
                             ×
                           </button>
@@ -353,7 +360,7 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
           </table>
         </div>
         {filteredPlayers.length > 150 && (
-          <div className="p-3 bg-black/60 text-center text-xs text-zinc-400 font-bold border-t border-zinc-800">
+          <div className="p-3 bg-[var(--m-panel)] text-center text-xs text-[var(--m-dim)] font-medium border-t border-[var(--m-line)]">
             Showing top 150 matches of {filteredPlayers.length}. Refine search queries or filters to view others.
           </div>
         )}
@@ -368,4 +375,3 @@ export function GlobalPlayerDatabase({ onClose }: GlobalPlayerDatabaseProps) {
     </div>
   );
 }
-

@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { Franchise, Player, PlayingXI } from '@/lib/types/game';
+import { selectionScore } from './selection-score';
 
 export interface SquadValidationResult {
   valid: boolean;
@@ -92,7 +93,7 @@ export function generateBestPlayingXI(franchise: Franchise): PlayingXI {
   // 1. Pick best Wicketkeeper (prefer Indian to conserve overseas slot if possible)
   const wicketkeepers = squad
     .filter((p) => p.role === 'Wicketkeeper' || p.secondaryRole === 'Wicketkeeper')
-    .sort((a, b) => b.ratings.overall - a.ratings.overall);
+    .sort((a, b) => selectionScore(b) - selectionScore(a));
 
   const bestWK = wicketkeepers[0] || squad.reduce((best, p) => (p.ratings.fielding > best.ratings.fielding ? p : best), squad[0]);
 
@@ -104,9 +105,9 @@ export function generateBestPlayingXI(franchise: Franchise): PlayingXI {
   const bowlers = squad.filter((p) => p.id !== bestWK.id && p.role === 'Bowler');
 
   // Sort candidates by overall rating
-  batters.sort((a, b) => b.ratings.overall - a.ratings.overall);
-  allRounders.sort((a, b) => b.ratings.overall - a.ratings.overall);
-  bowlers.sort((a, b) => b.ratings.overall - a.ratings.overall);
+  batters.sort((a, b) => selectionScore(b) - selectionScore(a));
+  allRounders.sort((a, b) => selectionScore(b) - selectionScore(a));
+  bowlers.sort((a, b) => selectionScore(b) - selectionScore(a));
 
   // Target team structure:
   // 1 WK (selected)
@@ -167,7 +168,7 @@ export function generateBestPlayingXI(franchise: Franchise): PlayingXI {
   // If still under 11, add best remaining players respecting overseas limit
   const remaining = squad
     .filter((p) => !selected.some((s) => s.id === p.id))
-    .sort((a, b) => b.ratings.overall - a.ratings.overall);
+    .sort((a, b) => selectionScore(b) - selectionScore(a));
 
   for (const p of remaining) {
     if (selected.length >= 11) break;

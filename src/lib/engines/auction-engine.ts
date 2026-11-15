@@ -42,6 +42,8 @@ export interface BidResult {
   newBid?: number;
 }
 
+import { computePriceIndex } from './auction/market-value';
+
 // --- Constants ---
 
 const MIN_SQUAD_BASE_COST = 20; // 20L minimum per player at auction
@@ -81,6 +83,13 @@ export function createAuctionSession(
     }
   }
 
+  const sessionFranchises = franchises.map((f) => ({
+    ...f,
+    players: [...f.players],
+    auctionPurchases: [...(f.auctionPurchases || [])],
+    currentOverseasCount: f.players.filter((p) => p.nationality === 'Overseas').length,
+  }));
+
   return {
     id: `auction-${settings.seasonYear}-${Date.now()}`,
     seasonYear: settings.seasonYear,
@@ -93,7 +102,10 @@ export function createAuctionSession(
     unsoldPlayers: [],
     round: 1,
     totalRounds: settings.totalRounds,
-    franchises: franchises.map((f) => ({ ...f })),
+    // Give the session its own arrays: markSold pushes into franchise.players,
+    // which previously mutated the store's franchise objects behind React's back.
+    franchises: sessionFranchises,
+    priceIndex: computePriceIndex(sessionFranchises, orderedPlayers, settings.seasonYear, settings.auctionType === 'Mega'),
     pace: settings.pace,
     isPaused: false,
     humanAutoBidMax: 0,

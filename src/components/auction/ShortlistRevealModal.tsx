@@ -1,265 +1,209 @@
 'use client';
 
-import React, { useState } from 'react';
+// ============================================================
+// IPL DYNASTY — Auction Sets reveal (final list + nomination order)
+// ============================================================
+
+import React, { useMemo, useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { formatPrice } from '@/lib/utils';
-import { getTeamTheme } from '@/lib/theme/team-themes';
-import { OFFICIAL_AUCTION_SETS } from '@/lib/engines/auction/shortlist-compiler';
-import {
-  Trophy,
-  Sparkles,
-  Users,
-  Globe,
-  Award,
-  ChevronRight,
-  Flame,
-  Star,
-  Layers,
-  ArrowRight,
-  DollarSign,
-} from 'lucide-react';
-import type { RegisteredPlayer } from '@/lib/types/registration';
+import { Gavel, Star, ChevronLeft } from 'lucide-react';
+import type { Player } from '@/lib/types/game';
+import { PlayerScoutingModal } from '@/components/scouting/PlayerScoutingModal';
+import { MButton, OvrBadge, OverseasTag, PageHero, Panel, RoleTag, StatTile, Tabs } from '@/components/mynba/primitives';
+import { SquadsViewer } from '@/components/mynba/SquadsViewer';
+import { PRIORITY_META } from '@/components/mynba/PlayerPoolTable';
 
 export function ShortlistRevealModal() {
   const {
     humanFranchiseId,
     franchises,
-    finalAuctionPool,
-    auctionSets,
+    auctionSession,
+    franchiseShortlists,
+    retentionDecisions,
     setPhase,
   } = useGameStore();
 
-  const availableSetCodes = Object.keys(auctionSets);
-  const [activeSetCode, setActiveSetCode] = useState<string>(
-    availableSetCodes[0] || 'M1'
+  const sets = useMemo(() => [...(auctionSession?.sets || [])].sort((a, b) => a.order - b.order), [auctionSession]);
+  const pool = useMemo(() => new Map((auctionSession?.playerPool || []).map((p) => [p.id, p])), [auctionSession]);
+  const [activeSet, setActiveSet] = useState<string>(sets[0]?.code || '');
+  const [tab, setTab] = useState<'sets' | 'squads'>('sets');
+  const [squadTeam, setSquadTeam] = useState(humanFranchiseId);
+  const [scouting, setScouting] = useState<Player | null>(null);
+
+  const entries = useMemo(() => franchiseShortlists[humanFranchiseId]?.entries || {}, [franchiseShortlists, humanFranchiseId]);
+  const human = franchises.find((f) => f.id === humanFranchiseId);
+  const players = useMemo(() => auctionSession?.playerPool || [], [auctionSession]);
+
+  const stats = useMemo(
+    () => ({
+      total: players.length,
+      overseas: players.filter((p) => p.nationality === 'Overseas').length,
+      capped: players.filter((p) => p.status === 'Capped').length,
+      targets: players.filter((p) => entries[p.id]).length,
+      totalPurse: franchises.reduce((s, f) => s + f.remainingPurse, 0),
+    }),
+    [players, entries, franchises]
   );
 
-  const humanFranchise = franchises.find((f) => f.id === humanFranchiseId);
-  const theme = getTeamTheme(humanFranchiseId);
+  /** Where each of your targets will be nominated. */
+  const targetPlan = useMemo(
+    () =>
+      Object.values(entries)
+        .map((e) => {
+          const set = sets.find((s) => s.playerIds.includes(e.playerId));
+          return { e, p: pool.get(e.playerId), set };
+        })
+        .filter((x) => x.p)
+        .sort((a, b) => (a.set?.order ?? 999) - (b.set?.order ?? 999)),
+    [entries, sets, pool]
+  );
 
-  const indianCount = finalAuctionPool.filter((p) => p.nationality === 'Indian').length;
-  const overseasCount = finalAuctionPool.filter((p) => p.nationality === 'Overseas').length;
-  const cappedCount = finalAuctionPool.filter((p) => p.status === 'Capped').length;
-  const uncappedCount = finalAuctionPool.filter((p) => p.status === 'Uncapped').length;
+  const current = sets.find((s) => s.code === activeSet) || sets[0];
+  const currentPlayers = (current?.playerIds || []).map((id) => pool.get(id)).filter(Boolean) as Player[];
+  const missingTargets = Object.keys(entries).length - targetPlan.length;
 
-  const currentSetPlayers = auctionSets[activeSetCode] || auctionSets[availableSetCodes[0]] || [];
-  const currentSetDef = OFFICIAL_AUCTION_SETS.find((s) => s.code === activeSetCode);
+  if (!auctionSession) {
+    return (
+      <div className="p-10 text-center">
+        <div className="m-label">No auction compiled yet</div>
+        <MButton className="mt-3" onClick={() => setPhase('Scouting')}>Back to scouting</MButton>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      {/* Top Banner */}
-      <div
-        className="neo-box p-6 rounded-2xl relative overflow-hidden"
-        style={{ backgroundColor: theme.cardBg }}
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-md text-[11px] font-black uppercase bg-emerald-400 text-black border border-black shadow-[1.5px_1.5px_0px_#000]">
-                Pre-Auction Phase 3
-              </span>
-              <span className="text-zinc-400 text-xs font-bold uppercase tracking-wider">
-                Official BCCI Selection
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight">
-              Final Auction Pool & Set Reveal
-            </h1>
-            <p className="text-zinc-300 text-xs sm:text-sm max-w-2xl font-medium">
-              Based on the shortlists submitted by all 10 franchises, the BCCI has finalized the official
-              auction pool of <span className="text-emerald-400 font-black">{finalAuctionPool.length} cricketers</span> organized
-              into 20 sequential auction sets.
-            </p>
-          </div>
+    <div className="max-w-[1320px] mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <PageHero
+        franchiseId={humanFranchiseId}
+        kicker="Auction"
+        title="Auction Sets"
+        subtitle={<>The final list is locked: {stats.total} players in {sets.length} sets, nominated in this order. Marquee sets open the night.</>}
+        right={
+          <>
+            <MButton variant="ghost" onClick={() => setPhase('Scouting')}><ChevronLeft className="w-4 h-4" /> Scouting</MButton>
+            <MButton variant="primary" size="lg" onClick={() => setPhase('Auction')}>
+              <Gavel className="w-4 h-4" /> Enter the auction floor
+            </MButton>
+          </>
+        }
+      />
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setPhase('Auction')}
-              className="neo-btn flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm uppercase transition-transform shadow-[4px_4px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px]"
-            >
-              <Flame className="w-5 h-5 stroke-[2.5]" />
-              Enter Auction Hall
-              <ChevronRight className="w-5 h-5 stroke-[2.5]" />
-            </button>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatTile label="Players" value={stats.total} />
+        <StatTile label="Overseas" value={stats.overseas} tone="gold" />
+        <StatTile label="Capped" value={stats.capped} />
+        <StatTile label="Your targets in list" value={stats.targets} tone="team" sub={missingTargets > 0 ? `${missingTargets} didn't make the cut` : undefined} />
+        <StatTile label="League purse" value={formatPrice(stats.totalPurse)} tone="green" />
       </div>
 
-      {/* KPI Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="neo-box p-4 rounded-xl bg-zinc-900 border-[2px] border-black">
-          <div className="text-[11px] font-black text-zinc-400 uppercase">Shortlisted Pool</div>
-          <div className="text-2xl font-black text-white mt-1">{finalAuctionPool.length}</div>
-          <div className="text-[11px] text-zinc-400 font-medium mt-0.5">Approved for bidding</div>
-        </div>
-
-        <div className="neo-box p-4 rounded-xl bg-zinc-900 border-[2px] border-black">
-          <div className="text-[11px] font-black text-zinc-400 uppercase">Indian Cricketers</div>
-          <div className="text-2xl font-black text-amber-400 mt-1">{indianCount}</div>
-          <div className="text-[11px] text-zinc-400 font-medium mt-0.5">
-            {cappedCount} Capped total
-          </div>
-        </div>
-
-        <div className="neo-box p-4 rounded-xl bg-zinc-900 border-[2px] border-black">
-          <div className="text-[11px] font-black text-zinc-400 uppercase">Overseas Talents</div>
-          <div className="text-2xl font-black text-sky-400 mt-1">{overseasCount}</div>
-          <div className="text-[11px] text-zinc-400 font-medium mt-0.5">
-            {uncappedCount} Uncapped total
-          </div>
-        </div>
-
-        <div className="neo-box p-4 rounded-xl bg-zinc-900 border-[2px] border-black">
-          <div className="text-[11px] font-black text-zinc-400 uppercase">Auction Sets</div>
-          <div className="text-2xl font-black text-emerald-400 mt-1">20 Sets</div>
-          <div className="text-[11px] text-zinc-400 font-medium mt-0.5">M1 through ACCEL</div>
-        </div>
-      </div>
-
-      {/* Set Selector Tabs */}
-      <div className="space-y-3">
-        <div className="text-xs font-black uppercase text-zinc-400 tracking-wider flex items-center gap-2">
-          <Layers className="w-4 h-4 text-amber-400" /> Select Auction Set to Preview
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {availableSetCodes.map((code) => {
-            const count = (auctionSets[code] || []).length;
-            const isSelected = activeSetCode === code;
-
-            return (
-              <button
-                key={code}
-                onClick={() => setActiveSetCode(code)}
-                className={`px-3 py-2 rounded-xl text-xs font-black uppercase border transition-all flex items-center gap-2 ${
-                  isSelected
-                    ? 'bg-amber-400 text-black border-black shadow-[2.5px_2.5px_0px_#000] translate-x-[-1px] translate-y-[-1px]'
-                    : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
-                }`}
-              >
-                <span>{code}</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded text-[10px] ${
-                    isSelected ? 'bg-black text-white' : 'bg-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Current Set Header & Table */}
-      <div className="neo-box p-5 rounded-2xl bg-zinc-900 border-[2px] border-black shadow-[4px_4px_0px_#000] space-y-4">
-        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[11px] font-black uppercase bg-zinc-800 text-amber-400 border border-zinc-700">
-                {currentSetDef?.category}
-              </span>
-              <h2 className="text-lg font-black text-white uppercase">
-                {currentSetDef?.name || activeSetCode}
-              </h2>
-            </div>
-            <div className="text-xs text-zinc-400 font-medium mt-0.5">
-              Contains {currentSetPlayers.length} cricketers in order of appearance
-            </div>
-          </div>
-
-          <button
-            onClick={() => setPhase('Auction')}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs uppercase"
-          >
-            Start with Set {activeSetCode} <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Players List */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-black/60 text-zinc-400 uppercase font-black text-[10px] tracking-wider">
-              <tr>
-                <th className="py-2.5 px-4">Lot Order</th>
-                <th className="py-2.5 px-4">Player</th>
-                <th className="py-2.5 px-3">Role</th>
-                <th className="py-2.5 px-3">Country / Status</th>
-                <th className="py-2.5 px-3 text-center">OVR</th>
-                <th className="py-2.5 px-3 text-right">Base Price</th>
-                <th className="py-2.5 px-4 text-center">Franchise Demand</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/60 font-medium">
-              {currentSetPlayers.map((player, idx) => {
-                const isShortlistedByHuman = player.shortlistedBy?.includes(humanFranchiseId);
-
-                return (
-                  <tr
-                    key={player.id}
-                    className={`hover:bg-zinc-800/40 transition-colors ${
-                      isShortlistedByHuman ? 'bg-amber-950/20' : ''
-                    }`}
-                  >
-                    <td className="py-2.5 px-4 font-mono font-bold text-zinc-500">
-                      #{idx + 1}
-                    </td>
-
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="font-black text-white text-sm">{player.name}</div>
-                        {isShortlistedByHuman && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-400 text-black border border-black">
-                            YOUR TARGET
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+        <div className="m-panel overflow-hidden">
+          <Tabs className="px-2" value={tab} onChange={setTab} tabs={[{ id: 'sets', label: 'Set order' }, { id: 'squads', label: 'Squads going in' }]} />
+          {tab === 'sets' ? (
+            <div className="grid grid-cols-1 md:grid-cols-[230px_minmax(0,1fr)]">
+              <ol className="border-b md:border-b-0 md:border-r border-[var(--m-line)] max-h-[620px] overflow-y-auto m-scroll p-1.5 space-y-0.5">
+                {sets.map((s) => {
+                  const mine = s.playerIds.filter((id) => entries[id]).length;
+                  const active = current?.code === s.code;
+                  return (
+                    <li key={s.id}>
+                      <button
+                        onClick={() => setActiveSet(s.code)}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-[2px] text-left ${active ? 'bg-ink text-[var(--m-bg)]' : 'hover:bg-ink/[0.05]'}`}
+                      >
+                        <span className={`w-6 text-right font-display font-bold text-xs ${active ? '' : 'text-[var(--m-faint)]'}`}>{s.order}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-display font-extrabold uppercase text-[13px] leading-tight truncate">{s.name}</span>
+                          <span className={`block text-[10px] ${active ? 'opacity-70' : 'text-[var(--m-faint)]'}`}>{s.code} · {s.totalCount} players</span>
+                        </span>
+                        {mine > 0 && (
+                          <span className="flex items-center gap-0.5 text-[11px] font-bold text-[var(--m-gold)]">
+                            <Star className="w-3 h-3" fill="currentColor" />{mine}
                           </span>
                         )}
-                      </div>
-                      <div className="text-[10px] text-zinc-500 font-mono">
-                        Age {player.age} • Form {player.recentForm}
-                      </div>
-                    </td>
-
-                    <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-zinc-800 border border-zinc-700 text-zinc-300">
-                        {player.role}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-3">
-                      <span className="font-bold text-zinc-200">{player.country}</span> •{' '}
-                      <span className="text-zinc-400 text-[10px]">{player.status}</span>
-                    </td>
-
-                    <td className="py-2.5 px-3 text-center font-black text-amber-400 text-sm">
-                      {player.ratings.overall}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-right font-black text-emerald-400">
-                      {formatPrice(player.basePrice)}
-                    </td>
-
-                    <td className="py-2.5 px-4 text-center">
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-zinc-800 text-[11px] font-black">
-                        <Flame className="w-3 h-3 text-amber-400" />
-                        <span className="text-white">{player.shortlistCount || 1}</span>
-                        <span className="text-zinc-500 font-medium text-[9px]">franchises</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {currentSetPlayers.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-zinc-500 font-bold">
-                    No players in set {activeSetCode}.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+              <div className="overflow-x-auto m-scroll">
+                <table className="m-table">
+                  <thead>
+                    <tr>
+                      <th className="w-8">#</th>
+                      <th className="w-12">OVR</th>
+                      <th>Player</th>
+                      <th>Role</th>
+                      <th className="text-right">Age</th>
+                      <th className="text-right">Base</th>
+                      <th>Tag</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentPlayers.map((p, i) => (
+                      <tr key={p.id} data-selected={!!entries[p.id]}>
+                        <td className="text-[var(--m-faint)] tabular-nums">{i + 1}</td>
+                        <td><OvrBadge ovr={p.ratings.overall} size="sm" /></td>
+                        <td>
+                          <button className="text-left" onClick={() => setScouting(p)}>
+                            <div className="font-display font-bold uppercase text-[15px] leading-tight hover:underline">{p.name}</div>
+                            <div className="text-[11px] text-[var(--m-faint)]">{p.country}</div>
+                          </button>
+                        </td>
+                        <td><div className="flex gap-1"><RoleTag role={p.role} />{p.nationality === 'Overseas' && <OverseasTag />}</div></td>
+                        <td className="text-right tabular-nums">{p.age}</td>
+                        <td className="text-right font-display font-bold tabular-nums">{formatPrice(p.basePrice)}</td>
+                        <td>
+                          {entries[p.id] && (
+                            <span className="m-chip" style={{ color: PRIORITY_META[entries[p.id].priority].color }}>
+                              {PRIORITY_META[entries[p.id].priority].label}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3">
+              <SquadsViewer
+                franchises={franchises}
+                humanFranchiseId={humanFranchiseId}
+                retentionDecisions={retentionDecisions}
+                selectedId={squadTeam}
+                onSelect={setSquadTeam}
+              />
+            </div>
+          )}
         </div>
+
+        <Panel title="Your target schedule" bodyClassName="p-0">
+          {targetPlan.length === 0 ? (
+            <div className="p-4 text-sm text-[var(--m-faint)]">No shortlisted players in the final list. You can still bid on anyone.</div>
+          ) : (
+            <ul className="max-h-[640px] overflow-y-auto m-scroll">
+              {targetPlan.map(({ e, p, set }) => (
+                <li key={e.playerId} className="flex items-center gap-2.5 px-3 py-2 border-b border-[var(--m-line)] last:border-0">
+                  <span className="w-1 self-stretch" style={{ background: PRIORITY_META[e.priority].color }} />
+                  <OvrBadge ovr={p!.ratings.overall} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-display font-bold uppercase truncate text-[14px]">{p!.name}</div>
+                    <div className="text-[10px] text-[var(--m-faint)]">
+                      Set {set?.order ?? '?'} · {set?.code} {e.targetMaxBidLakhs ? `· max ${formatPrice(e.targetMaxBidLakhs)}` : ''}
+                    </div>
+                  </div>
+                  <span className="text-xs tabular-nums text-[var(--m-dim)]">{formatPrice(p!.basePrice)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
+
+      {scouting && <PlayerScoutingModal player={scouting} franchise={human} onClose={() => setScouting(null)} />}
     </div>
   );
 }
-

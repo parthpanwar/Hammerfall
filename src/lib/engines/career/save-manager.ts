@@ -6,6 +6,7 @@
 
 import type { GameState } from '@/lib/types/game';
 import type { CareerState, CareerSaveSlot } from '@/lib/types/career';
+import { serializeCompact, parseCompact } from '@/lib/store/player-compaction';
 
 const SAVE_STORAGE_KEY_PREFIX = 'ipl_dynasty_slot_';
 const AUTOSAVE_STORAGE_KEY = 'ipl_dynasty_autosave';
@@ -44,7 +45,7 @@ export function saveCareerToSlot(
       careerState,
     };
 
-    const serialized = JSON.stringify(payload);
+    const serialized = serializeCompact(payload);
     const storageKey = slotNumber === 0 ? AUTOSAVE_STORAGE_KEY : `${SAVE_STORAGE_KEY_PREFIX}${slotNumber}`;
 
     window.localStorage.setItem(storageKey, serialized);
@@ -82,7 +83,7 @@ export function loadCareerFromSlot(slotNumber: number): FullCareerSavePayload | 
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) return null;
 
-    const parsed: FullCareerSavePayload = JSON.parse(raw);
+    const parsed: FullCareerSavePayload = parseCompact(raw);
     return parsed;
   } catch (err) {
     console.error(`Failed to load career save from slot ${slotNumber}:`, err);
@@ -105,7 +106,7 @@ export function listAllSaveSlots(): { slotNumber: number; metadata: CareerSaveSl
 
     if (raw) {
       try {
-        const parsed: FullCareerSavePayload = JSON.parse(raw);
+        const parsed: FullCareerSavePayload = parseCompact(raw);
         const humanFranchise = parsed.gameState.franchises.find(
           (f) => f.id === parsed.gameState.humanFranchiseId
         );
@@ -155,7 +156,7 @@ export function importSaveJsonToSlot(slotNumber: number, jsonString: string): bo
   }
 
   try {
-    const parsed: FullCareerSavePayload = JSON.parse(jsonString);
+    const parsed: FullCareerSavePayload = parseCompact(jsonString);
     if (!parsed.gameState || !parsed.careerState) {
       throw new Error('Invalid save file structure');
     }

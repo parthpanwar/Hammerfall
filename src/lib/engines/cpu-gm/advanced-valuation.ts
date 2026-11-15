@@ -19,61 +19,24 @@ import {
 import type { PlayerIntelligenceDossier } from '../../intelligence/types';
 import { generatePlayerIntelligenceDossier } from '../../intelligence/valuation/player-intelligence';
 import { analyzeUpcomingPool } from '../auction/dynamic-set-engine';
+import { xiGain } from './xi-value';
+import { getActiveGMProfile } from './personalities';
+import { auctionMarketValue, iplPedigree, patienceMultiplier, singlePlayerCap, teamWealthFactor } from '../auction/market-value';
 
 /**
- * Calculates how much adding candidate player improves the franchise's best starting XI.
- * A starting XI consists of:
- * - 2 Openers
- * - 3-4 Middle Order / Anchors
- * - 1 Wicketkeeper
- * - 2 All-Rounders
- * - 3 Specialists Bowlers (at least 1 spinner, 1 death bowler)
- * Respects overseas quota (max 4 overseas in XI).
+ * How much the candidate lifts this squad's best XI (0 = he would not start).
+ * Measured with real XI selection (overseas cap of four, a keeper, bowling
+ * balance) on selection scores — age, IPL output and youth minutes included — and
+ * against the replacement-level Indian still available later in the auction. A
+ * 39-year-old overseas opener does not "improve" an XI that has a rising Indian
+ * opener; a fifth overseas star who would sit on the bench improves nothing.
  */
 export function calculatePlayingXiImprovement(
   franchise: Franchise,
-  candidate: Player
+  candidate: Player,
+  session?: AuctionSession
 ): number {
-  const squad = franchise.players;
-  if (squad.length === 0) {
-    // First player always directly anchors the starting XI
-    return Math.round(candidate.ratings.overall * 0.45);
-  }
-
-  const isCandidateOverseas = candidate.nationality === 'Overseas';
-  const overseasInSquad = squad.filter((p) => p.nationality === 'Overseas');
-
-  // If squad already has >= 4 overseas players better than candidate, candidate cannot improve overseas XI
-  if (isCandidateOverseas && overseasInSquad.length >= 4) {
-    const sortedOverseas = [...overseasInSquad].sort((a, b) => b.ratings.overall - a.ratings.overall);
-    if (candidate.ratings.overall <= sortedOverseas[3].ratings.overall) {
-      return 0; // Does not make top 4 overseas in starting XI
-    }
-  }
-
-  // Find players in squad who share candidate's tactical roles
-  const candidateRoles = getPlayerTacticalRoles(candidate);
-  const matchingSquad = squad.filter((p) => {
-    const pRoles = getPlayerTacticalRoles(p);
-    return pRoles.some((r) => candidateRoles.includes(r));
-  });
-
-  if (matchingSquad.length === 0) {
-    // Fills a completely vacant starting XI tactical role
-    return Math.round(candidate.ratings.overall * 0.38);
-  }
-
-  // Find lowest rated starter among matching role players
-  matchingSquad.sort((a, b) => a.ratings.overall - b.ratings.overall);
-  const weakestMatching = matchingSquad[0];
-
-  if (candidate.ratings.overall > weakestMatching.ratings.overall) {
-    const delta = candidate.ratings.overall - weakestMatching.ratings.overall;
-    return Math.min(35, Math.round(delta * 2.2));
-  }
-
-  // Candidate is equal or worse than current starters for this role
-  return 0;
+  return Math.min(35, Math.round(xiGain(franchise, candidate, session) * 2.2));
 }
 
 /**
@@ -166,91 +129,86 @@ export function calculateAdvancedSpendingLimit(
 
   // Analyze upcoming auction pool & sets to prevent early overbidding
   const upcomingAnalysis = analyzeUpcomingPool(player, session);
-  const earlyAuctionDiscount = upcomingAnalysis.earlyDiscountMultiplier;
+  // Market value (rating × IPL pedigree × price index) and patience for later sets.
+  const marketVal = Math.round(auctionMarketValue(player, session) * teamWealthFactor(franchise, session) * strategyFit(franchise, player));
+  const patience = patienceMultiplier(player, session);
+  const earlyAuctionDiscount = Math.min(upcomingAnalysis.earlyDiscountMultiplier, patience);
+  const cap = Math.min(maxAffordable, singlePlayerCap(player, franchise, session.seasonYear));
+  void dossier;
 
   // -------------------------------------------------------------
   // DIFFICULTY: EASY (Simple baseline heuristic, no deep optimization)
   // -------------------------------------------------------------
   if (difficulty === 'Easy') {
-    const simpleValuation = player.basePrice + Math.max(0, (player.ratings.overall - 65) * 45);
     const budgetRatio = franchise.remainingPurse / openSlots;
-    const easyLimit = Math.min(simpleValuation * earlyAuctionDiscount, maxAffordable, budgetRatio * 2.0);
+    const easyLimit = Math.min(marketVal * earlyAuctionDiscount, cap, budgetRatio * 2.4);
     return Math.max(player.basePrice, Math.round(easyLimit / 5) * 5);
   }
 
   // -------------------------------------------------------------
   // DIFFICULTY: NORMAL / HARD / EXPERT
   // -------------------------------------------------------------
-  const personalityType = getFranchiseActivePersonality(session.id, franchise.id);
+  const personalityType = getFranchiseActivePersonality(session.id, franchise);
   const personality = GM_PERSONALITY_ARCHETYPES[personalityType];
 
   // 1. Incremental Value: Playing XI vs Squad Depth
-  const xiGain = calculatePlayingXiImprovement(franchise, player);
+  const xiGain = calculatePlayingXiImprovement(franchise, player, session);
   const depthGain = calculateSquadDepthImprovement(franchise, player);
   const alternatives = evaluateAlternativeOptions(player, session);
 
   // 2. Scarcity Multiplier based on remaining alternatives & upcoming sets
   let scarcityMult = upcomingAnalysis.scarcityFactor;
-  if (alternatives.qualityTier === 'Last-Option') scarcityMult = Math.max(scarcityMult, 1.35);
-  else if (alternatives.qualityTier === 'Scarce') scarcityMult = Math.max(scarcityMult, 1.20);
-  else if (alternatives.qualityTier === 'Abundant') scarcityMult = Math.min(scarcityMult, 0.88);
+  if (alternatives.qualityTier === 'Last-Option') scarcityMult = Math.max(scarcityMult, 1.3);
+  else if (alternatives.qualityTier === 'Scarce') scarcityMult = Math.max(scarcityMult, 1.15);
+  else if (alternatives.qualityTier === 'Abundant') scarcityMult = Math.min(scarcityMult, 0.9);
 
-  // 3. Multi-Season Longevity (Model 2)
-  let multiSeasonBonus = 1.0;
-  if (dossier.longevityProjections && dossier.longevityProjections.length >= 2) {
-    const avgFuture = (dossier.longevityProjections[0].projectedRating + dossier.longevityProjections[1].projectedRating) / 2;
-    if (avgFuture >= dossier.projection.overallImpactScore) {
-      multiSeasonBonus = 1.08;
-    } else if (avgFuture < dossier.projection.overallImpactScore - 6) {
-      multiSeasonBonus = 0.94;
-    }
-  }
+  // 3. Multi-season value: young players with headroom are worth more over a contract.
+  const headroom = Math.max(0, player.ratings.potential - player.ratings.overall);
+  const multiSeasonBonus = player.age <= 24 && headroom >= 4 ? 1.06 : player.age >= 35 ? 0.92 : 1.0;
 
-  // 4. Model 3 Market Bounds & Model 4 Franchise Valuation
-  const fairVal = dossier.marketValuation.fairValue;
-  const teamVal = dossier.teamValuations?.[franchise.id]?.maxBidLakhs || fairVal;
-
-  // 5. Dynamic Budget Ratio & Z Multiplier
+  // 4. Budget discipline: share of the per-slot budget a player of this quality may take.
   const budgetRatio = franchise.remainingPurse / openSlots;
-  const impact = dossier.projection.overallImpactScore;
+  const ovr = player.ratings.overall;
+  const ped = iplPedigree(player, session.seasonYear);
   let Z = 1.6;
-  if (impact >= 90) Z = 4.2;
-  else if (impact >= 85) Z = 3.4;
-  else if (impact >= 80) Z = 2.6;
-  else if (impact >= 75) Z = 2.0;
-
-  // Personality adjustments to Z
+  if (ovr >= 88) Z = 4.4;
+  else if (ovr >= 85) Z = 3.6;
+  else if (ovr >= 81) Z = 2.7;
+  else if (ovr >= 76) Z = 2.0;
+  if (!ped.proven && player.nationality === 'Overseas') Z *= 0.85;
   Z *= personality.starPremiumMultiplier;
 
-  // If player doesn't make Starting XI, cap aggressively at squad depth tier
+  // Cash pressure: money that is not spent is wasted. A team holding far more per
+  // open slot than this player costs pays up for the good ones still on the board.
+  const fillTo = session.auctionType === 'Mini' ? 21 : 22;
+  const slotsToFill = Math.max(1, fillTo - franchise.players.length);
+  const progress = session.playerPool.length ? session.currentPlayerIndex / session.playerPool.length : 1;
+  const perSlot = franchise.remainingPurse / slotsToFill;
+  const pressure = Math.max(0, Math.min(0.5, Math.log2(perSlot / Math.max(60, marketVal)) * 0.12 * (0.5 + progress)));
+
   let compositeValuation: number;
   if (xiGain > 0) {
-    // Starter caliber
-    let rawVal = ((fairVal * 0.40) + (teamVal * 0.40) + (xiGain * 35)) * scarcityMult * multiSeasonBonus * earlyAuctionDiscount;
-    if (player.ratings.overall < 78 && upcomingAnalysis.betterPlayersRemainingInRole >= 2) {
-      // Prevent overpaying on average early player when better options exist in future sets
-      rawVal = Math.min(rawVal, fairVal * 1.15);
+    // Starter: market value, more if he lifts this XI a lot.
+    let rawVal = marketVal * (0.85 + Math.min(0.35, xiGain / 100)) * (1 + pressure * 0.6) * scarcityMult * multiSeasonBonus * earlyAuctionDiscount;
+    if (ovr < 78 && upcomingAnalysis.betterPlayersRemainingInRole >= 2) {
+      rawVal = Math.min(rawVal, marketVal * 1.1);
     }
     compositeValuation = Math.round(rawVal);
   } else {
     // Pure squad depth: strictly bounded to avoid overpaying for backups
-    const depthMax = Math.min(fairVal * 0.65, budgetRatio * 1.4) * earlyAuctionDiscount;
-    compositeValuation = Math.max(player.basePrice, Math.round(depthMax + depthGain * 10));
+    const depthMax = Math.min(marketVal * (0.7 + pressure), budgetRatio * 1.4) * earlyAuctionDiscount;
+    compositeValuation = Math.max(player.basePrice, Math.round(depthMax + depthGain * 6));
   }
 
-  // Expert level: dynamic price smoothing
-  if (difficulty === 'Expert') {
-    // If abundant alternatives exist with comparable ratings, don't overbid
-    if (alternatives.count >= 3 && alternatives.averageRating >= player.ratings.overall - 3) {
-      compositeValuation = Math.min(compositeValuation, fairVal * 1.05);
-    }
+  // Expert level: don't overbid when comparable options are plentiful
+  if (difficulty === 'Expert' && alternatives.count >= 3 && alternatives.averageRating >= ovr - 3) {
+    compositeValuation = Math.min(compositeValuation, Math.round(marketVal * 1.05));
   }
 
-  const spendingLimit = Math.min(
-    compositeValuation,
-    maxAffordable,
-    Math.max(player.basePrice, Math.round(budgetRatio * Z))
-  );
+  let spendingLimit = Math.min(compositeValuation, cap, Math.max(player.basePrice, Math.round(budgetRatio * Z)));
+  // A team that has just won several lots in a row eases off (budget review, the
+  // board's nerves, rivals pricing them in) — no single franchise hoovers up a set.
+  spendingLimit = Math.round(spendingLimit * haulDamping(franchise, session, player));
 
   // If squad still has fewer than 18 players, prioritize legal roster filling at base price
   let effectiveLimit = spendingLimit;
@@ -259,6 +217,34 @@ export function calculateAdvancedSpendingLimit(
   }
 
   return Math.min(maxAffordable, Math.max(player.basePrice, Math.round(effectiveLimit / 5) * 5));
+}
+
+/**
+ * How well a player fits this window's front-office plan: the roles the scouts are
+ * chasing, the premium on Indians, and the plan's youth/experience bias.
+ */
+export function strategyFit(franchise: Franchise, player: Player): number {
+  const profile = getActiveGMProfile(franchise);
+  const traits = GM_PERSONALITY_ARCHETYPES[profile.currentArchetype] ?? GM_PERSONALITY_ARCHETYPES['Balanced squad builder'];
+  const roles = getPlayerTacticalRoles(player);
+  const affinity = Math.max(...roles.map((r) => profile.roleAffinities[r] ?? 1), 0.75);
+  let m = 1 + (Math.min(1.6, affinity) - 1) * 0.35;
+  if (player.nationality === 'Indian') m *= 1 + (profile.domesticPremium - 1) * 0.3;
+  const headroom = player.ratings.potential - player.ratings.overall;
+  if (player.age <= 24 && headroom >= 5) m *= 1 + traits.youthBias * 0.15;
+  else if (player.age >= 32) m *= 1 - traits.youthBias * 0.12;
+  return Math.max(0.8, Math.min(1.3, m));
+}
+
+/** Eases a franchise off after it has won 3+ of the last 6 lots (elite players exempt). */
+export function haulDamping(franchise: Franchise, session: AuctionSession, player: Player): number {
+  if (player.ratings.overall >= 86) return 1;
+  const recent = session.soldPlayers.slice(-6);
+  const wins = recent.filter((s) => s.franchiseId === franchise.id).length;
+  const last2 = recent.slice(-2).every((s) => s.franchiseId === franchise.id) && recent.length >= 2;
+  if (wins >= 4) return 0.7;
+  if (wins >= 3 || last2) return 0.85;
+  return 1;
 }
 
 /**
@@ -284,7 +270,7 @@ export function evaluateBiddingRuleSnippet(
   scarcityMultiplier: number;
 } {
   const pDossier = dossier || generatePlayerIntelligenceDossier(player);
-  const personalityType = getFranchiseActivePersonality(session.id, franchise.id);
+  const personalityType = getFranchiseActivePersonality(session.id, franchise);
   const personality = GM_PERSONALITY_ARCHETYPES[personalityType];
 
   // 1. Scarcity Multiplier: 0.9 + 0.2 * scarcity

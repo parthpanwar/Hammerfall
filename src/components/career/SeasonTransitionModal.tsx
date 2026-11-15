@@ -2,23 +2,16 @@
 
 import React, { useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
-import { getTeamTheme } from '@/lib/theme/team-themes';
 import { formatPrice } from '@/lib/utils';
 import {
-  Trophy,
-  Flame,
-  Zap,
   TrendingUp,
   TrendingDown,
-  UserCheck,
-  FileText,
   ArrowRight,
   Sparkles,
-  Calendar,
   AlertCircle,
-  Award,
 } from 'lucide-react';
 import type { SeasonTransitionStep } from '@/lib/types/career';
+import { auctionTypeFor } from '@/lib/flow/season-flow';
 
 interface SeasonTransitionModalProps {
   isOpen: boolean;
@@ -30,21 +23,17 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
     currentSeason,
     humanFranchiseId,
     franchises,
-    seasonAwards,
     careerState,
     advanceSeason,
+    settings,
     setPhase,
   } = useGameStore();
 
-  const [step, setStep] = useState<SeasonTransitionStep>('SEASON_REVIEW');
-  const humanTheme = getTeamTheme(humanFranchiseId);
+  const [step, setStep] = useState<SeasonTransitionStep>('PLAYER_DEVELOPMENT');
   const humanFranchise = franchises.find((f) => f.id === humanFranchiseId);
 
   if (!isOpen) return null;
 
-  const orangeCap = seasonAwards.find((a) => a.type === 'OrangeCap');
-  const purpleCap = seasonAwards.find((a) => a.type === 'PurpleCap');
-  const mvp = seasonAwards.find((a) => a.type === 'MVP');
 
   const humanPlayers = humanFranchise?.players || [];
   const progressionDeltas = careerState.recentProgressionDeltas.filter((d) =>
@@ -55,7 +44,7 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
   );
 
   const nextSeason = currentSeason + 1;
-  const isMega = (nextSeason - 2026) % 3 === 0;
+  const isMega = auctionTypeFor(nextSeason, settings) === 'Mega';
 
   const handleCompleteAdvance = () => {
     advanceSeason();
@@ -64,107 +53,47 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="neo-box w-full max-w-4xl max-h-[90vh] bg-zinc-950 rounded-2xl flex flex-col overflow-hidden border-[3px] border-black shadow-[8px_8px_0px_#000]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-md animate-in fade-in duration-150">
+      <div className="terminal-card w-full max-w-4xl max-h-[90vh] bg-[var(--m-panel)] rounded-2xl flex flex-col overflow-hidden border border-[var(--m-line)] shadow-2xl relative">
         {/* Header Bar */}
-        <div
-          className="p-4 sm:p-5 border-b-[2.5px] border-black flex items-center justify-between"
-          style={{ backgroundColor: humanTheme.primary, color: humanTheme.textLight }}
-        >
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="w-6 h-6 stroke-[2.5]" />
+        <div className="p-5 border-b border-[var(--m-line)] bg-[var(--m-panel)] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-6 h-6 text-[var(--m-accent-ink)]" />
             <div>
-              <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight">
-                DYNASTY TRANSITION WIZARD
+              <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-[var(--m-text)] font-heading">
+                Preparing IPL {nextSeason}
               </h2>
-              <p className="text-xs font-bold opacity-90">
+              <p className="text-xs text-[var(--m-dim)] font-medium">
                 Season {currentSeason} Conclusion &bull; Preparing for Season {nextSeason}
               </p>
             </div>
           </div>
-          <div className="neo-badge px-3 py-1 rounded bg-black text-white text-xs font-black">
-            {step === 'SEASON_REVIEW' && 'STEP 1 / 4: HONORS'}
-            {step === 'PLAYER_DEVELOPMENT' && 'STEP 2 / 4: DEVELOPMENT'}
-            {step === 'RETIREMENTS' && 'STEP 3 / 4: RETIREMENTS'}
-            {step === 'AUCTION_PREP' && 'STEP 4 / 4: NEW SEASON'}
+          <div className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 text-xs font-bold">
+            {step === 'PLAYER_DEVELOPMENT' && 'Step 1 of 3 · Development'}
+            {step === 'RETIREMENTS' && 'Step 2 of 3 · Retirements'}
+            {step === 'AUCTION_PREP' && 'Step 3 of 3 · New season'}
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          {/* STEP 1: SEASON REVIEW */}
-          {step === 'SEASON_REVIEW' && (
-            <div className="space-y-6">
-              <div className="text-center space-y-1">
-                <span className="neo-badge px-2.5 py-0.5 rounded bg-amber-400 text-black text-[11px] font-black inline-block">
-                  SEASON {currentSeason} WRAP-UP
-                </span>
-                <h3 className="text-2xl font-black uppercase text-white">
-                  INDIVIDUAL HONORS & MILESTONES
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="neo-box p-4 rounded-xl bg-zinc-900 text-center">
-                  <div className="w-10 h-10 rounded-lg bg-orange-500 text-black flex items-center justify-center mx-auto mb-2 border border-black shadow-[2px_2px_0px_#000]">
-                    <Flame className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                  <div className="text-xs font-black text-orange-400 uppercase">Orange Cap</div>
-                  <div className="text-base font-black text-white mt-1 truncate">
-                    {orangeCap?.playerName || 'Tournament Top Scorer'}
-                  </div>
-                  <div className="text-2xl font-black text-orange-400 mt-1">
-                    {orangeCap?.value || 640} <span className="text-xs font-bold text-zinc-400">runs</span>
-                  </div>
-                </div>
-
-                <div className="neo-box p-4 rounded-xl bg-zinc-900 text-center">
-                  <div className="w-10 h-10 rounded-lg bg-purple-500 text-white flex items-center justify-center mx-auto mb-2 border border-black shadow-[2px_2px_0px_#000]">
-                    <Zap className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                  <div className="text-xs font-black text-purple-400 uppercase">Purple Cap</div>
-                  <div className="text-base font-black text-white mt-1 truncate">
-                    {purpleCap?.playerName || 'Leading Wicket-Taker'}
-                  </div>
-                  <div className="text-2xl font-black text-purple-400 mt-1">
-                    {purpleCap?.value || 24} <span className="text-xs font-bold text-zinc-400">wickets</span>
-                  </div>
-                </div>
-
-                <div className="neo-box p-4 rounded-xl bg-zinc-900 text-center">
-                  <div className="w-10 h-10 rounded-lg bg-amber-400 text-black flex items-center justify-center mx-auto mb-2 border border-black shadow-[2px_2px_0px_#000]">
-                    <Award className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                  <div className="text-xs font-black text-amber-400 uppercase">Tournament MVP</div>
-                  <div className="text-base font-black text-white mt-1 truncate">
-                    {mvp?.playerName || 'Most Valuable Player'}
-                  </div>
-                  <div className="text-2xl font-black text-amber-400 mt-1">
-                    {mvp?.value || 810} <span className="text-xs font-bold text-zinc-400">pts</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: PLAYER DEVELOPMENT */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-6 bg-[var(--m-panel)]">
           {step === 'PLAYER_DEVELOPMENT' && (
             <div className="space-y-4">
               <div className="text-center space-y-1">
-                <span className="neo-badge px-2.5 py-0.5 rounded bg-emerald-400 text-black text-[11px] font-black inline-block">
+                <span className="telemetry-badge-sm bg-[var(--m-green)]/15 text-[var(--m-green)] border border-[var(--m-green)]/30 text-[11px] font-bold inline-block">
                   PROGRESSION & AGING
                 </span>
-                <h3 className="text-2xl font-black uppercase text-white">
-                  {humanFranchise?.shortName} SQUAD DEVELOPMENT
+                <h3 className="text-2xl font-bold uppercase text-[var(--m-text)] font-heading">
+                  {humanFranchise?.shortName} Squad Development
                 </h3>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-[var(--m-dim)] font-medium">
                   Ratings have evolved probabilistically based on ML age curves, season game-time, and role ceilings.
                 </p>
               </div>
 
-              <div className="neo-box rounded-xl bg-zinc-900 border-2 border-black overflow-hidden max-h-72 overflow-y-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-black/60 text-zinc-400 uppercase text-[10px] font-black border-b border-zinc-800">
+              <div className="terminal-card rounded-xl overflow-hidden max-h-72 overflow-y-auto border border-[var(--m-line)]">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-[var(--m-panel)] text-[var(--m-dim)] uppercase text-[10px] font-bold border-b border-[var(--m-line)]">
                     <tr>
                       <th className="py-2.5 px-3">Player</th>
                       <th className="py-2.5 px-3">New Age</th>
@@ -174,27 +103,34 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
                       <th className="py-2.5 px-3">Development Note</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800/60 font-bold">
-                    {progressionDeltas.map((d) => (
-                      <tr key={d.playerId} className="hover:bg-zinc-800/40">
-                        <td className="py-2 px-3 font-black text-white">{d.playerName}</td>
-                        <td className="py-2 px-3 text-zinc-400">{d.age}</td>
-                        <td className="py-2 px-3 text-zinc-400">{d.previousOverall}</td>
-                        <td className="py-2 px-3 font-black text-amber-400">{d.newOverall}</td>
+                  <tbody className="divide-y divide-[var(--m-line)]/50 font-medium">
+                    {progressionDeltas.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-[var(--m-dim)]">
+                          Ratings update when you launch the new season. You will see who improved in the Franchise Office.
+                        </td>
+                      </tr>
+                    )}
+                    {progressionDeltas.map((d, idx) => (
+                      <tr key={d.playerId} className={idx % 2 === 0 ? 'bg-[var(--m-panel)]' : 'bg-[var(--m-panel)]'}>
+                        <td className="py-2 px-3 font-bold text-[var(--m-text)]">{d.playerName}</td>
+                        <td className="py-2 px-3 text-[var(--m-dim)] tabular-nums">{d.age}</td>
+                        <td className="py-2 px-3 text-[var(--m-dim)] tabular-nums">{d.previousOverall}</td>
+                        <td className="py-2 px-3 font-bold text-[var(--m-text)] tabular-nums">{d.newOverall}</td>
                         <td className="py-2 px-3">
                           {d.overallDelta > 0 ? (
-                            <span className="inline-flex items-center gap-0.5 text-emerald-400 font-black">
+                            <span className="inline-flex items-center gap-0.5 text-[var(--m-green)] font-bold tabular-nums">
                               <TrendingUp className="w-3.5 h-3.5" /> +{d.overallDelta}
                             </span>
                           ) : d.overallDelta < 0 ? (
-                            <span className="inline-flex items-center gap-0.5 text-red-400 font-black">
+                            <span className="inline-flex items-center gap-0.5 text-[var(--m-red)] font-bold tabular-nums">
                               <TrendingDown className="w-3.5 h-3.5" /> {d.overallDelta}
                             </span>
                           ) : (
-                            <span className="text-zinc-500 font-bold">&plusmn;0</span>
+                            <span className="text-[var(--m-dim)] font-medium">&plusmn;0</span>
                           )}
                         </td>
-                        <td className="py-2 px-3 text-[11px] text-zinc-400">{d.progressionNote}</td>
+                        <td className="py-2 px-3 text-[11px] text-[var(--m-dim)]">{d.progressionNote}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -207,40 +143,40 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
           {step === 'RETIREMENTS' && (
             <div className="space-y-4">
               <div className="text-center space-y-1">
-                <span className="neo-badge px-2.5 py-0.5 rounded bg-purple-400 text-black text-[11px] font-black inline-block">
+                <span className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 text-[11px] font-bold inline-block">
                   CAREER FAREWELLS
                 </span>
-                <h3 className="text-2xl font-black uppercase text-white">
-                  LEAGUE RETIREMENTS & HALL OF FAME
+                <h3 className="text-2xl font-bold uppercase text-[var(--m-text)] font-heading">
+                  League Retirements & Hall of Fame
                 </h3>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-[var(--m-dim)] font-medium">
                   Veteran cricketers who have announced their retirement. Full lifetime stats remain preserved in records.
                 </p>
               </div>
 
               {recentRetirements.length === 0 ? (
-                <div className="neo-box p-6 rounded-xl bg-zinc-900 text-center text-zinc-400 font-bold text-xs">
+                <div className="p-6 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] text-center text-[var(--m-dim)] font-medium text-xs">
                   No players retired this season! All active veterans have confirmed participation for Season {nextSeason}.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto">
                   {recentRetirements.map((r) => (
-                    <div key={r.playerId} className="neo-box p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+                    <div key={r.playerId} className="p-4 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)]">
                       <div className="flex items-center justify-between">
-                        <span className="font-black text-white text-sm">{r.playerName}</span>
+                        <span className="font-bold text-[var(--m-text)] text-sm">{r.playerName}</span>
                         {r.hallOfFame && (
-                          <span className="neo-badge px-2 py-0.5 rounded bg-amber-400 text-black text-[10px] font-black">
+                          <span className="telemetry-badge-sm bg-[var(--m-gold)]/20 text-[var(--m-gold)] border border-[var(--m-gold)]/40 text-[10px] font-bold">
                             HALL OF FAME
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-zinc-400 mt-1">
+                      <div className="text-xs text-[var(--m-dim)] font-medium mt-1">
                         Age {r.age} &bull; Reason: {r.reason}
                       </div>
-                      <div className="mt-2 text-xs font-bold text-zinc-300 flex items-center gap-3">
+                      <div className="mt-2 text-xs font-semibold text-[var(--m-text)] flex items-center gap-3">
                         <span>{r.careerMatches} matches</span>
-                        <span>{r.careerRuns} runs</span>
-                        <span>{r.careerWickets} wickets</span>
+                        <span className="text-[var(--m-gold)]">{r.careerRuns} runs</span>
+                        <span className="text-[var(--m-accent-ink)]">{r.careerWickets} wickets</span>
                       </div>
                     </div>
                   ))}
@@ -253,45 +189,45 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
           {step === 'AUCTION_PREP' && (
             <div className="space-y-6">
               <div className="text-center space-y-1">
-                <span className="neo-badge px-2.5 py-0.5 rounded bg-cyan-400 text-black text-[11px] font-black inline-block">
+                <span className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 text-[11px] font-bold inline-block">
                   LOOKING AHEAD
                 </span>
-                <h3 className="text-2xl font-black uppercase text-white">
-                  WELCOME TO IPL {nextSeason}
+                <h3 className="text-2xl font-bold uppercase text-[var(--m-text)] font-heading">
+                  Welcome to IPL {nextSeason}
                 </h3>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-[var(--m-dim)] font-medium">
                   Financial parameters and auction format for the upcoming campaign.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="neo-box p-5 rounded-xl bg-zinc-900 space-y-2">
-                  <div className="text-xs font-black text-cyan-400 uppercase">Auction Format</div>
-                  <div className="text-2xl font-black text-white">
-                    {isMega ? 'IPL MEGA AUCTION' : 'IPL MINI AUCTION'}
+                <div className="p-5 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] space-y-2">
+                  <div className="text-xs font-bold text-[var(--m-accent-ink)] uppercase">Auction Format</div>
+                  <div className="text-2xl font-bold text-[var(--m-text)]">
+                    {isMega ? `MEGA AUCTION · NOV ${currentSeason}` : `MINI AUCTION · DEC ${currentSeason}`}
                   </div>
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-xs text-[var(--m-dim)] font-medium">
                     {isMega
                       ? '3-year contract cycle reset. Retain up to 6 players, remainder re-enter auction.'
                       : 'Continuing contracts maintained. Release surplus players to replenish auction purse.'}
                   </p>
                 </div>
 
-                <div className="neo-box p-5 rounded-xl bg-zinc-900 space-y-2">
-                  <div className="text-xs font-black text-emerald-400 uppercase">Salary Cap Purse</div>
-                  <div className="text-2xl font-black text-emerald-400">
+                <div className="p-5 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] space-y-2">
+                  <div className="text-xs font-bold text-[var(--m-green)] uppercase">Salary Cap Purse</div>
+                  <div className="text-2xl font-bold font-mono text-[var(--m-green)]">
                     {formatPrice(12000 + (nextSeason - 2026) * 500)}
                   </div>
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-xs text-[var(--m-dim)] font-medium">
                     Increased by ₹5 Cr in accordance with official IPL league salary cap inflation.
                   </p>
                 </div>
               </div>
 
-              <div className="neo-box p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs font-medium flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div className="p-4 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] text-[var(--m-text)] text-xs font-medium flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-[var(--m-gold)] shrink-0" />
                 <span>
-                  Clicking <strong>Launch Season {nextSeason}</strong> will finalize development, generate 24 new rookie draft class players, and open the pre-auction phase.
+                  Clicking <strong>Launch Season {nextSeason}</strong> will finalize development, add a new intake of young players to the auction pool, and open retentions.
                 </span>
               </div>
             </div>
@@ -299,15 +235,14 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-zinc-900/80 border-t-[2.5px] border-black flex items-center justify-between">
+        <div className="p-4 bg-[var(--m-panel)] border-t border-[var(--m-line)] flex items-center justify-between">
           <button
             onClick={() => {
-              if (step === 'PLAYER_DEVELOPMENT') setStep('SEASON_REVIEW');
               if (step === 'RETIREMENTS') setStep('PLAYER_DEVELOPMENT');
               if (step === 'AUCTION_PREP') setStep('RETIREMENTS');
             }}
-            disabled={step === 'SEASON_REVIEW'}
-            className="neo-btn px-4 py-2 rounded-xl text-xs font-black uppercase text-zinc-400 disabled:opacity-30"
+            disabled={step === 'PLAYER_DEVELOPMENT'}
+            className="sports-btn px-4 py-2 rounded-lg text-xs font-bold uppercase text-[var(--m-dim)] border border-[var(--m-line)] bg-[var(--m-raised)] hover:text-[var(--m-text)] hover:bg-[var(--m-line)] disabled:opacity-30 transition-colors"
           >
             Back
           </button>
@@ -315,23 +250,21 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
           {step !== 'AUCTION_PREP' ? (
             <button
               onClick={() => {
-                if (step === 'SEASON_REVIEW') setStep('PLAYER_DEVELOPMENT');
-                else if (step === 'PLAYER_DEVELOPMENT') setStep('RETIREMENTS');
+                if (step === 'PLAYER_DEVELOPMENT') setStep('RETIREMENTS');
                 else if (step === 'RETIREMENTS') setStep('AUCTION_PREP');
               }}
-              className="neo-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-1.5"
-              style={{ backgroundColor: humanTheme.primary, color: humanTheme.textLight }}
+              className="sports-btn px-6 py-2.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 bg-[var(--m-accent-ink)] text-white hover:bg-[var(--m-accent-ink)]/90 transition-colors shadow-md shadow-[var(--m-accent-ink)]/20"
             >
               <span>Next Step</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[3]" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           ) : (
             <button
               onClick={handleCompleteAdvance}
-              className="neo-btn px-8 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black shadow-[3px_3px_0px_#000]"
+              className="sports-btn px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 bg-[var(--m-green)] hover:bg-[var(--m-green)]/90 text-white transition-colors shadow-lg shadow-[var(--m-green)]/20"
             >
               <Sparkles className="w-4 h-4" />
-              <span>LAUNCH SEASON {nextSeason}</span>
+              <span>Launch Season {nextSeason}</span>
             </button>
           )}
         </div>
@@ -339,4 +272,3 @@ export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModal
     </div>
   );
 }
-

@@ -163,6 +163,10 @@ export interface PlayerProgressionDelta {
   newBowling: number;
   potential: number;
   progressionNote: string;
+  /** Change in potential this off-season (breakouts raise it, busts cut it). */
+  potentialDelta?: number;
+  trend?: import('./game').DevelopmentTrend;
+  callUp?: boolean;
 }
 
 /** Full multi-season career container state */
@@ -175,5 +179,30 @@ export interface CareerState {
   storylines: LeagueStoryline[];
   recentProgressionDeltas: PlayerProgressionDelta[];
   activeSaveSlot: number;
+  /** Player trading: rules, cash accounts, negotiations and permanent history (optional for older saves). */
+  trade?: import('./trade').TradeState;
+  /** League transaction log: retentions, releases and auction signings (trades live in trade.history). */
+  transactions?: TransactionRecord[];
+  /** Season in which CPU franchises already made their pre-mini-auction releases. */
+  cpuReleaseSeason?: number;
+}
+
+export type TransactionType = 'Retained' | 'Released' | 'Signed';
+
+export interface TransactionRecord {
+  id: string;
+  season: number;
+  type: TransactionType;
+  franchiseId: string;
+  playerId: string;
+  playerName: string;
+  overall: number;
+  role: string;
+  /** Retention cost, salary kept, or auction price. */
+  amountLakhs: number;
+  /** 'Mega' / 'Mini' — the auction window this happened in. */
+  window: import('./game').AuctionType;
+  timestamp: number;
+  note?: string;
 }
 

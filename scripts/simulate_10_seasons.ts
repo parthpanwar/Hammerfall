@@ -12,6 +12,7 @@ import type { CareerState } from '../src/lib/types/career';
 import { initializeFranchiseHistory } from '../src/lib/engines/career/history-tracker';
 import { createInitialContracts } from '../src/lib/engines/career/contract-engine';
 import { executeSeasonAdvance } from '../src/lib/engines/career/multi-season-controller';
+import { seasonPerformance } from '../src/lib/engines/career/player-progression';
 import { generateIPLFixtures, calculateStandings, generatePlayoffFixtures, calculateSeasonAwards } from '../src/lib/engines/tournament-engine';
 import { simulateFullMatch } from '../src/lib/engines/match-engine';
 import { generateBestPlayingXI } from '../src/lib/engines/squad-engine';
@@ -54,6 +55,18 @@ async function run10SeasonDynastySimulation() {
     allPlayers: [...PLAYERS],
     retentionDecisions: [],
     retentionComplete: true,
+    registrationPool: [],
+    registrationSummary: null,
+    franchiseShortlists: {},
+    finalAuctionPool: [],
+    auctionSets: {},
+    squadRules: {
+      presetName: 'Official',
+      minSquadSize: 18,
+      maxSquadSize: 25,
+      maxOverseas: 8,
+      requireExactOverseas: false,
+    },
     auctionSession: null,
     auctionComplete: true,
     fixtures: [],
@@ -308,9 +321,28 @@ async function run10SeasonDynastySimulation() {
 
     // 4. Advance to Next Season via Multi-Season Controller
     if (s < 10) {
+      if (process.env.DYN) {
+        const perfs = gameState.allPlayers
+          .map((p) => ({ p, s: gameState.playerSeasonStats[p.id] }))
+          .filter((x) => x.s && x.s.matches >= 8)
+          .map((x) => ({ ...x, v: seasonPerformance(x.p, x.s) }))
+          .filter((x) => x.v !== null)
+          .sort((a, b) => (b.v ?? 0) - (a.v ?? 0));
+        const q = (f: number) => perfs[Math.floor(f * (perfs.length - 1))]?.v?.toFixed(2);
+        const unc = perfs.filter((x) => x.p.status === 'Uncapped' && x.p.nationality === 'Indian');
+        console.log(`  [perf] n=${perfs.length} p10 ${q(0.1)} p50 ${q(0.5)} p90 ${q(0.9)} · uncapped Indians ≥8 matches: ${unc.length}, best ${unc.slice(0, 3).map((x) => `${x.p.name} ${x.v?.toFixed(2)} ovr ${x.p.ratings.overall}`).join('; ')}`);
+        const top = perfs.slice(0, 3).map((x) => `${x.p.name} ${x.s.runs}r SR${Math.round(x.s.strikeRate)} ${x.s.wickets}w e${x.s.economyRate.toFixed(1)}`);
+        console.log(`  [perf] top: ${top.join(' | ')}`);
+      }
       const advanceResult = executeSeasonAdvance(gameState, careerState);
       gameState = advanceResult.updatedGameState;
       careerState = advanceResult.updatedCareerState;
+      if (process.env.DYN) {
+        const dev = gameState.allPlayers.filter((p) => p.development?.season === gameState.currentSeason);
+        const n = (t: string) => dev.filter((p) => p.development!.trend === t).length;
+        console.log(`  [dev] breakouts ${n('Breakout')} · rising ${n('Rising')} · busts ${n('Bust')} · stalled ${n('Stalled')} · domestic breakouts ${n('Domestic breakout')} · call-ups ${dev.filter((p) => p.development!.callUp).map((p) => p.name).join(', ')}`);
+        for (const r of advanceResult.strategyReviews) console.log(`  [plan] ${r.franchiseId}: ${r.from} → ${r.to}${r.changed ? ' (changed)' : ''} — ${r.strategy.rationale}`);
+      }
 
       totalRetirementsRecorded += advanceResult.newRetirements.length;
       totalRookiesIntegrated += advanceResult.newRookies.length;

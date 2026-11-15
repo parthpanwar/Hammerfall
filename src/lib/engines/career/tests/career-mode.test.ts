@@ -127,14 +127,13 @@ async function runCareerModeTests() {
   // TEST 3: Multi-Season Contracts & Rules Cycle
   // ------------------------------------------------------------
   console.log('\n--- TEST 3: Multi-Season Contracts & Rules Cycle ---');
-  assert(getAuctionTypeForSeason(2026) === 'Mega', `Season 2026 designated as Mega Auction`);
-  assert(getAuctionTypeForSeason(2027) === 'Mini', `Season 2027 designated as Mini Auction`);
-  assert(getAuctionTypeForSeason(2028) === 'Mini', `Season 2028 designated as Mini Auction`);
-  assert(getAuctionTypeForSeason(2029) === 'Mega', `Season 2029 designated as Mega Auction (3-year cycle reset)`);
-
-  assert(getLeaguePurseForSeason(2026) === 12000, `2026 Purse Cap is 120 Cr (12,000 Lakhs)`);
-  assert(getLeaguePurseForSeason(2027) === 12500, `2027 Purse Cap inflates to 125 Cr (12,500 Lakhs)`);
-  assert(getLeaguePurseForSeason(2030) === 14000, `2030 Purse Cap inflates to 140 Cr (14,000 Lakhs)`);
+  assert(getAuctionTypeForSeason(2025) === 'Mega', `IPL 2025 followed a Mega Auction (Nov 2024)`);
+  assert(getAuctionTypeForSeason(2026) === 'Mini', `IPL 2026 followed a Mini Auction (Dec 2025)`);
+  assert(getAuctionTypeForSeason(2027) === 'Mini', `IPL 2027 follows a Mini Auction (Dec 2026)`);
+  assert(getAuctionTypeForSeason(2028) === 'Mega', `IPL 2028 follows a Mega Auction (3-year cycle reset)`);
+  assert(getLeaguePurseForSeason(2026) === 12500, `2026 Purse Cap is 125 Cr (12,500 Lakhs) — the real IPL 2026 purse`);
+  assert(getLeaguePurseForSeason(2027) === 13000, `2027 Purse Cap inflates to 130 Cr (13,000 Lakhs)`);
+  assert(getLeaguePurseForSeason(2030) === 14500, `2030 Purse Cap inflates to 145 Cr (14,500 Lakhs)`);
 
   // Contract advancement
   const testFranchise: Franchise = { ...FRANCHISES[0], players: [youngTalent, masterVet] };

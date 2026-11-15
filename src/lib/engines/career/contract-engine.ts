@@ -9,22 +9,19 @@ import type { PlayerContract } from '@/lib/types/career';
 
 /** Base purse in 2026 is 120 Cr (12,000 Lakhs), increasing by 5 Cr (500 Lakhs) each season */
 export function getLeaguePurseForSeason(seasonYear: number): number {
+  // IPL 2026 purse was ₹125 Cr; later seasons assume ₹5 Cr growth a year.
   const inflationYears = Math.max(0, seasonYear - 2026);
-  return 12000 + inflationYears * 500;
+  return 12500 + inflationYears * 500;
 }
 
 /**
- * Determines whether the upcoming season features a Mega or Mini Auction.
- * Official IPL operates on a 3-year mega auction cycle:
- * 2026: Mega (Season 1 of cycle)
- * 2027: Mini (Season 2)
- * 2028: Mini (Season 3)
- * 2029: Mega (Season 1 of next cycle)
- * 2030: Mini, etc.
+ * The REAL IPL auction calendar. Seasons are named by the year they are played; the
+ * auction is held late in the previous year. Mega auctions: IPL 2025 (Nov 2024),
+ * 2028, 2031…; every other season follows a mini auction.
+ * (Campaign-specific cycles live in auctionTypeFor in lib/flow/season-flow.)
  */
 export function getAuctionTypeForSeason(seasonYear: number): AuctionType {
-  const cycleOffset = (seasonYear - 2026) % 3;
-  return cycleOffset === 0 ? 'Mega' : 'Mini';
+  return (((seasonYear - 2025) % 3) + 3) % 3 === 0 ? 'Mega' : 'Mini';
 }
 
 /**
@@ -160,3 +157,47 @@ export function releasePlayerFromFranchise(
   return { updatedFranchise, updatedContracts, releasedPlayer };
 }
 
+
+/**
+ * Bring contracts in line with actual rosters (after retentions / the auction).
+ * Previously contracts were only built from pre-retention rosters at game start,
+ * so auction buys had no contract and retained players kept stale salaries.
+ */
+export function syncRosterContracts(
+  franchises: Franchise[],
+  contracts: Record<string, PlayerContract>,
+  retentionDecisions: { playerId: string; franchiseId: string; cost: number }[],
+  seasonYear: number,
+  auctionType: AuctionType
+): Record<string, PlayerContract> {
+  const next = { ...contracts };
+  const duration = auctionType === 'Mega' ? 3 : 1;
+  const retained = new Map(retentionDecisions.map((d) => [d.playerId, d]));
+  for (const f of franchises) {
+    for (const p of f.players) {
+      const existing = next[p.id];
+      const r = retained.get(p.id);
+      const keep = existing && existing.franchiseId === f.id && existing.status === 'Active' && !r && !(p.soldPrice > 0 && existing.signingSeason !== seasonYear);
+      if (keep) continue;
+      const salary = r && r.franchiseId === f.id ? r.cost : p.soldPrice > 0 ? p.soldPrice : p.currentContractValue > 0 ? p.currentContractValue : p.basePrice;
+      next[p.id] = {
+        playerId: p.id,
+        playerName: p.name,
+        franchiseId: f.id,
+        salaryLakhs: salary,
+        yearsRemaining: existing?.franchiseId === f.id && existing.originalAcquisition === 'Trade' ? existing.yearsRemaining : duration,
+        signingSeason: seasonYear,
+        status: 'Active',
+        originalAcquisition: existing?.franchiseId === f.id && existing.originalAcquisition === 'Trade' ? 'Trade' : r ? 'Retention' : 'Auction',
+        isRetained: !!r,
+        retentionSlot: r ? undefined : existing?.retentionSlot,
+      };
+    }
+  }
+  // Players no longer on any roster keep their record but lose the franchise link.
+  const rostered = new Set(franchises.flatMap((f) => f.players.map((p) => p.id)));
+  for (const [id, c] of Object.entries(next)) {
+    if (!rostered.has(id) && c.status === 'Active' && c.franchiseId) next[id] = { ...c, status: 'Released', franchiseId: '' };
+  }
+  return next;
+}

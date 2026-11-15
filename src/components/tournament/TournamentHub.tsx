@@ -9,9 +9,9 @@ import {
   generatePlayoffFixtures,
 } from '@/lib/engines/tournament-engine';
 import { simulateFullMatch } from '@/lib/engines/match-engine';
-import { Calendar, Play, FastForward, Trophy, ArrowRight, Shield, Award } from 'lucide-react';
+import { Play, FastForward, Trophy } from 'lucide-react';
+import { MButton, PageHeader, Panel, TeamCrest } from '@/components/mynba/primitives';
 import type { Fixture, MatchResult } from '@/lib/types/game';
-import { getTeamTheme } from '@/lib/theme/team-themes';
 
 export function TournamentHub() {
   const {
@@ -26,10 +26,10 @@ export function TournamentHub() {
     updatePlayerSeasonStats,
   } = useGameStore();
 
-  const [activeTab, setActiveTab] = useState<'hub' | 'match' | 'schedule'>('hub');
+  const [activeTab, setActiveTab] = useState<'hub' | 'match'>('hub');
+  const [fixtureFilter, setFixtureFilter] = useState<'mine' | 'all'>('mine');
   const [selectedMatchForSim, setSelectedMatchForSim] = useState<Fixture | null>(null);
 
-  const humanTheme = getTeamTheme(humanFranchiseId);
 
   const nextUnplayedFixture = fixtures.find((f) => !f.isCompleted);
   const humanNextFixture = fixtures.find(
@@ -74,6 +74,13 @@ export function TournamentHub() {
         result: sim.matchResult,
       };
 
+      // Every player in both XIs gets exactly one appearance, batted or not.
+      const counted = new Set<string>();
+      const appearance = (id: string) => {
+        if (counted.has(id)) return 0;
+        counted.add(id);
+        return 1;
+      };
       for (const b of [...sim.innings1.batsmen, ...sim.innings2.batsmen]) {
         if (b.balls > 0) {
           updatePlayerSeasonStats(b.playerId, {
@@ -81,6 +88,7 @@ export function TournamentHub() {
             ballsFaced: b.balls,
             fours: b.fours,
             sixes: b.sixes,
+            matches: appearance(b.playerId),
           });
         }
       }
@@ -90,19 +98,21 @@ export function TournamentHub() {
             oversBowled: b.overs,
             wickets: b.wickets,
             runsConceded: b.runs,
+            matches: appearance(b.playerId),
           });
         }
       }
+      for (const id of [...xi1.players, ...xi2.players]) if (!counted.has(id)) updatePlayerSeasonStats(id, { matches: appearance(id) });
     }
   };
 
   const handleSimulateToHumanMatch = () => {
+    if (!humanNextFixture) return;
+
     const updated = [...fixtures];
     for (const f of updated) {
+      if (f.id === humanNextFixture.id) break;
       if (f.isCompleted) continue;
-      if (f.team1Id === humanFranchiseId || f.team2Id === humanFranchiseId) {
-        break;
-      }
       runSilentSim(f, updated);
     }
 
@@ -143,227 +153,137 @@ export function TournamentHub() {
   if (activeTab === 'match' && selectedMatchForSim) {
     return (
       <div className="space-y-4">
-        <div className="max-w-6xl mx-auto px-4 pt-4">
-          <button
-            onClick={() => setActiveTab('hub')}
-            className="neo-btn px-4 py-1.5 rounded-lg text-xs uppercase font-black bg-zinc-800 text-zinc-300 hover:text-white"
-          >
-            ← BACK TO TOURNAMENT HUB
-          </button>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-6">
+          <MButton variant="ghost" size="sm" onClick={() => setActiveTab('hub')}>
+            ← Back to league
+          </MButton>
         </div>
-        <MatchSimulator
-          fixture={selectedMatchForSim}
-          onMatchComplete={handleMatchCompleted}
-        />
+        <MatchSimulator fixture={selectedMatchForSim} onMatchComplete={handleMatchCompleted} />
       </div>
     );
   }
 
+  const team = (id: string) => franchises.find((f) => f.id === id);
+  const openMatch = (f: Fixture) => {
+    setSelectedMatchForSim(f);
+    setActiveTab('match');
+  };
+  const isMine = (f: Fixture) => f.team1Id === humanFranchiseId || f.team2Id === humanFranchiseId;
+  const listed = fixtures.filter((f) => fixtureFilter === 'all' || isMine(f));
+  const myPlayed = fixtures.filter((f) => isMine(f) && f.isCompleted);
+  const myWins = myPlayed.filter((f) => f.result?.winnerId === humanFranchiseId).length;
+  const spotlight = humanNextFixture ?? nextUnplayedFixture;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      {/* Top Banner: Tournament Progress & Fast Simulation (Neo-Box) */}
-      <div
-        className="neo-box p-5 rounded-2xl relative overflow-hidden"
-        style={{
-          backgroundColor: humanTheme.cardBg,
-        }}
-      >
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div
-              className="w-12 h-12 rounded-xl border-2 border-black flex items-center justify-center shadow-[2px_2px_0px_#000]"
-              style={{
-                backgroundColor: humanTheme.primary,
-                color: humanTheme.textLight,
-              }}
-            >
-              <Calendar className="w-6 h-6 stroke-[2.5]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black uppercase text-white tracking-tight">
-                  IPL TOURNAMENT HUB
-                </h2>
-                <span className="neo-badge px-2.5 py-0.5 rounded bg-amber-400 text-black text-xs font-black">
-                  {completedCount} / {fixtures.length} MATCHES
-                </span>
-              </div>
-              <p className="text-xs text-zinc-300 font-medium mt-0.5">
-                14 League games per franchise. Top 4 teams qualify for the championship playoffs bracket.
-              </p>
-            </div>
-          </div>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <PageHeader
+        kicker={`League stage · ${completedCount} of ${fixtures.length} matches played`}
+        title="League"
+        subtitle="Each team plays 14 league matches. Finish in the top four to reach the playoffs."
+        right={
+          isRegularSeasonDone ? (
+            <MButton variant="go" size="lg" onClick={handleEnterPlayoffs}>
+              <Trophy className="w-4 h-4" /> Enter the playoffs
+            </MButton>
+          ) : (
+            <MButton variant="ghost" onClick={handleSimulateAllSeason} title="Simulates every remaining league match, including yours">
+              <FastForward className="w-4 h-4" /> Simulate rest of league
+            </MButton>
+          )
+        }
+      />
 
-          {/* Action Controls */}
-          <div className="flex flex-wrap items-center gap-2">
-            {!isRegularSeasonDone ? (
-              <>
-                {humanNextFixture && humanNextFixture.id !== nextUnplayedFixture?.id && (
-                  <button
-                    onClick={handleSimulateToHumanMatch}
-                    className="neo-btn px-3.5 py-2 rounded-xl text-xs uppercase font-black bg-zinc-800 hover:bg-zinc-700 text-zinc-200 flex items-center gap-1.5"
-                  >
-                    <FastForward className="w-3.5 h-3.5 text-amber-400" />
-                    SIM TO YOUR NEXT MATCH
-                  </button>
-                )}
-
-                <button
-                  onClick={handleSimulateAllSeason}
-                  className="neo-btn px-3.5 py-2 rounded-xl text-xs uppercase font-black bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
-                >
-                  SIMULATE ENTIRE LEAGUE
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={handleEnterPlayoffs}
-                className="neo-btn px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2"
-                style={{
-                  backgroundColor: humanTheme.primary,
-                  color: humanTheme.textLight,
-                }}
-              >
-                <Trophy className="w-4 h-4 fill-current" />
-                <span>ENTER IPL PLAYOFFS</span>
-              </button>
-            )}
-          </div>
-        </div>
+      <div className="m-meter h-1.5" aria-label="League progress">
+        <span style={{ width: `${fixtures.length ? (completedCount / fixtures.length) * 100 : 0}%`, background: 'var(--m-green)' }} />
       </div>
 
-      {/* Spotlight: Next Scheduled Match */}
-      {nextUnplayedFixture && !isRegularSeasonDone && (
-        <div className="neo-box p-5 rounded-2xl bg-zinc-950">
-          <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-zinc-400 mb-3 pb-2 border-b-2 border-black">
-            <span className="text-amber-400">NEXT UPCOMING MATCH</span>
-            <span>MATCH #{nextUnplayedFixture.matchNumber} • {nextUnplayedFixture.venue}</span>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              {/* Team 1 */}
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="w-9 h-9 rounded-lg border-2 border-black flex items-center justify-center font-black text-xs shadow-[2px_2px_0px_#000]"
-                  style={{
-                    backgroundColor: franchises.find((f) => f.id === nextUnplayedFixture.team1Id)?.colors.primary,
-                    color: franchises.find((f) => f.id === nextUnplayedFixture.team1Id)?.colors.text,
-                  }}
-                >
-                  {franchises.find((f) => f.id === nextUnplayedFixture.team1Id)?.abbreviation}
-                </span>
-                <span className="font-black text-sm text-white">
-                  {franchises.find((f) => f.id === nextUnplayedFixture.team1Id)?.name}
-                </span>
+      {spotlight && !isRegularSeasonDone && (
+        <Panel bodyClassName="p-0">
+          <div className="flex flex-col md:flex-row md:items-center gap-5 px-6 py-6">
+            <div className="flex-1 min-w-0">
+              <div className="m-label">
+                {humanNextFixture ? `Your next match · ${myPlayed.length} played, ${myWins} won` : 'Next match'}
               </div>
-
-              <span className="neo-badge px-2 py-0.5 rounded bg-black text-zinc-400 text-xs font-black">
-                VS
-              </span>
-
-              {/* Team 2 */}
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="w-9 h-9 rounded-lg border-2 border-black flex items-center justify-center font-black text-xs shadow-[2px_2px_0px_#000]"
-                  style={{
-                    backgroundColor: franchises.find((f) => f.id === nextUnplayedFixture.team2Id)?.colors.primary,
-                    color: franchises.find((f) => f.id === nextUnplayedFixture.team2Id)?.colors.text,
-                  }}
-                >
-                  {franchises.find((f) => f.id === nextUnplayedFixture.team2Id)?.abbreviation}
-                </span>
-                <span className="font-black text-sm text-white">
-                  {franchises.find((f) => f.id === nextUnplayedFixture.team2Id)?.name}
-                </span>
+              <div className="flex items-center gap-4 mt-3">
+                <TeamCrest franchiseId={spotlight.team1Id} size="md" />
+                <span className="font-display font-extrabold uppercase text-xl truncate">{team(spotlight.team1Id)?.shortName}</span>
+                <span className="text-[var(--m-faint)] text-sm">vs</span>
+                <span className="font-display font-extrabold uppercase text-xl truncate">{team(spotlight.team2Id)?.shortName}</span>
+                <TeamCrest franchiseId={spotlight.team2Id} size="md" />
+              </div>
+              <div className="text-xs text-[var(--m-faint)] mt-2">
+                Match {spotlight.matchNumber} · {spotlight.venue}
               </div>
             </div>
-
-            <button
-              onClick={() => {
-                setSelectedMatchForSim(nextUnplayedFixture);
-                setActiveTab('match');
-              }}
-              className="neo-btn px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 bg-amber-400 text-black hover:bg-amber-300"
-            >
-              <Play className="w-3.5 h-3.5 fill-black" />
-              <span>PLAY / SIMULATE MATCH</span>
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {humanNextFixture && humanNextFixture.id !== nextUnplayedFixture?.id ? (
+                <MButton variant="primary" size="lg" onClick={handleSimulateToHumanMatch}>
+                  <FastForward className="w-4 h-4" /> Sim to your match
+                </MButton>
+              ) : (
+                <MButton variant="primary" size="lg" onClick={() => openMatch(spotlight)}>
+                  <Play className="w-4 h-4" /> Play match
+                </MButton>
+              )}
+            </div>
           </div>
-        </div>
+        </Panel>
       )}
 
-      {/* Main Grid: Standings (Left) & Upcoming Schedule List (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Points Table (7 cols) */}
-        <div className="lg:col-span-7">
-          <StandingsTable />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-6 items-start">
+        <StandingsTable />
 
-        {/* Fixtures Schedule List (5 cols) */}
-        <div className="lg:col-span-5 neo-box p-5 rounded-2xl bg-zinc-950 flex flex-col">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b-2 border-black">
-            <h3 className="font-black text-sm uppercase text-white flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-amber-400 stroke-[2.5]" /> FIXTURES & RESULTS
-            </h3>
-            <span className="neo-badge px-2 py-0.5 rounded bg-black text-zinc-400 text-[10px]">
-              70 MATCHES
-            </span>
-          </div>
-
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 flex-1">
-            {fixtures.slice(0, 30).map((f) => {
-              const t1 = franchises.find((fr) => fr.id === f.team1Id);
-              const t2 = franchises.find((fr) => fr.id === f.team2Id);
-              const isHuman = f.team1Id === humanFranchiseId || f.team2Id === humanFranchiseId;
-
-              return (
-                <div
-                  key={f.id}
-                  className={`neo-box-sm p-2.5 rounded-xl flex items-center justify-between text-xs transition-all ${
-                    isHuman
-                      ? 'bg-zinc-900 border-amber-400/80 ring-1 ring-amber-400'
-                      : 'bg-zinc-950 hover:bg-zinc-900'
-                  }`}
+        <Panel
+          title="Fixtures"
+          right={
+            <div className="flex gap-1">
+              {(['mine', 'all'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setFixtureFilter(k)}
+                  className={`px-2.5 py-0.5 rounded-full text-xs ${fixtureFilter === k ? 'bg-ink text-[var(--m-bg)] font-semibold' : 'text-[var(--m-dim)] hover:text-ink'}`}
                 >
-                  <div>
-                    <div className="flex items-center gap-1.5 font-black text-white">
-                      <span>{t1?.shortName}</span>
-                      <span className="text-zinc-500 text-[10px]">vs</span>
-                      <span>{t2?.shortName}</span>
-                    </div>
-                    <div className="text-[10px] text-zinc-400 font-bold mt-0.5">
-                      Match #{f.matchNumber}
-                    </div>
+                  {k === 'mine' ? 'Yours' : 'All'}
+                </button>
+              ))}
+            </div>
+          }
+          bodyClassName="p-0"
+        >
+          <ul className="max-h-[520px] overflow-y-auto m-scroll">
+            {listed.map((f) => {
+              const t1 = team(f.team1Id);
+              const t2 = team(f.team2Id);
+              const won = f.result?.winnerId;
+              return (
+                <li key={f.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--m-line)]/50 text-sm">
+                  <span className="w-7 text-xs text-[var(--m-faint)] tabular-nums">{f.matchNumber}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className={won === t1?.id ? 'font-semibold' : f.isCompleted ? 'text-[var(--m-dim)]' : ''}>{t1?.shortName}</span>
+                    <span className="text-[var(--m-faint)] mx-1.5">v</span>
+                    <span className={won === t2?.id ? 'font-semibold' : f.isCompleted ? 'text-[var(--m-dim)]' : ''}>{t2?.shortName}</span>
                   </div>
-
-                  <div className="text-right">
-                    {f.isCompleted && f.result ? (
-                      <div>
-                        <span className="text-emerald-400 font-black block text-[11px]">
-                          {f.result.winnerId === t1?.id ? t1?.shortName : t2?.shortName} Won
-                        </span>
-                        <span className="text-[9px] text-zinc-400 font-bold">
-                          {f.result.team1Score.runs}/{f.result.team1Score.wickets} vs {f.result.team2Score.runs}/{f.result.team2Score.wickets}
-                        </span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setSelectedMatchForSim(f);
-                          setActiveTab('match');
-                        }}
-                        className="neo-btn text-[10px] py-1 px-2.5 rounded-lg bg-zinc-800 text-amber-400 font-black uppercase hover:bg-zinc-700"
-                      >
-                        SIM
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  {f.isCompleted && f.result ? (
+                    <span className="text-xs tabular-nums text-[var(--m-dim)]">
+                      {f.result.team1Score.runs}/{f.result.team1Score.wickets} · {f.result.team2Score.runs}/{f.result.team2Score.wickets}
+                      {isMine(f) && (
+                        <b className={`ml-2 ${won === humanFranchiseId ? 'text-[var(--m-green)]' : 'text-[var(--m-red)]'}`}>
+                          {won === humanFranchiseId ? 'W' : 'L'}
+                        </b>
+                      )}
+                    </span>
+                  ) : f.id === nextUnplayedFixture?.id ? (
+                    <MButton size="sm" variant="ghost" onClick={() => openMatch(f)}>
+                      Play
+                    </MButton>
+                  ) : (
+                    <span className="text-xs text-[var(--m-faint)]">Upcoming</span>
+                  )}
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ul>
+        </Panel>
       </div>
     </div>
   );

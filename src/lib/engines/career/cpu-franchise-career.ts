@@ -9,6 +9,7 @@ import type { PlayerContract } from '@/lib/types/career';
 import { calculateFranchiseUpcomingPurse, releasePlayerFromFranchise } from './contract-engine';
 import { RETENTION_RULES_2026 } from '@/lib/data/retention-rules';
 import { getRetentionCost } from '@/lib/engines/retention-engine';
+import { isOverpaidContract } from '../auction/market-value';
 
 export interface CpuSeasonPostMortem {
   franchiseId: string;
@@ -79,8 +80,10 @@ export function evaluateCpuSeasonAndPlan(
     const isOverpriced = price >= 800 && player.ratings.overall <= 76;
     const isDecliningVeteran = player.age >= 36 && player.ratings.overall <= 75;
     const isWeakDepth = player.ratings.overall <= 68;
+    // The market would pay far less next auction (e.g. a big fee after a poor IPL season).
+    const isMarketOverpaid = isOverpaidContract(player, price, seasonYear + 1) && player.ratings.overall < 86;
 
-    if (isOverpriced || isDecliningVeteran || isWeakDepth) {
+    if (isOverpriced || isDecliningVeteran || isWeakDepth || isMarketOverpaid) {
       recommendedReleases.push(player.id);
     }
   }
@@ -195,8 +198,10 @@ export function executeCpuPreAuctionDecisions(
     currentFranchise.retainedPlayers = retainedPlayersList;
 
     const totalSpent = retentionDecisions.reduce((sum, r) => sum + r.cost, 0);
-    currentFranchise.totalPurse = RETENTION_RULES_2026.totalPurse;
-    currentFranchise.remainingPurse = Math.max(0, RETENTION_RULES_2026.totalPurse - totalSpent);
+    // The season's (grown) league purse — set by the season rollover — not the 2026 rule book's.
+    const leaguePurse = franchise.totalPurse || RETENTION_RULES_2026.totalPurse;
+    currentFranchise.totalPurse = leaguePurse;
+    currentFranchise.remainingPurse = Math.max(0, leaguePurse - totalSpent);
   }
 
   return {

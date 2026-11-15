@@ -1,473 +1,375 @@
 'use client';
 
-import React, { useState } from 'react';
+// ============================================================
+// IPL DYNASTY — Retention Day (MyNBA-style roster management)
+// ============================================================
+
+import React, { useMemo, useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { RETENTION_RULES_2026 } from '@/lib/data/retention-rules';
-import {
-  validateRetention,
-  processRetention,
-  cpuRetentionDecisions,
-} from '@/lib/engines/retention-engine';
-import { createAuctionSession } from '@/lib/engines/auction-engine';
+import { seasonLabel } from '@/lib/flow/season-flow';
+import { validateRetention, cpuRetentionDecisions } from '@/lib/engines/retention-engine';
 import { formatPrice } from '@/lib/utils';
 import { createSeededRandom } from '@/lib/utils/random';
-import { Shield, Check, X, ArrowRight, DollarSign, Users, Award, Sparkles, Filter } from 'lucide-react';
-import type { Player, RetentionDecision } from '@/lib/types/game';
-import { getTeamTheme } from '@/lib/theme/team-themes';
+import { Lock, X, ChevronRight, Info, AlertTriangle, Search } from 'lucide-react';
+import type { Player, RetentionDecision, RetentionRule } from '@/lib/types/game';
 import { PlayerScoutingModal } from '@/components/scouting/PlayerScoutingModal';
+import {
+  MButton,
+  Modal,
+  OvrBadge,
+  OverseasTag,
+  PageHero,
+  Panel,
+  RoleTag,
+  StatTile,
+  Tabs,
+  TeamCrest,
+} from '@/components/mynba/primitives';
+
+type RoleFilter = 'All' | Player['role'];
+
+/**
+ * Re-price a franchise's retentions in order. Capped players take the official
+ * slabs (₹18 → 14 → 11 → 18 → 14 Cr) by capped order; uncapped cost ₹4 Cr.
+ * Releasing a player re-prices the rest, so slabs never go stale.
+ */
+function repriceRetentions(
+  decisions: RetentionDecision[],
+  byId: Map<string, Player>,
+  rules: RetentionRule
+): RetentionDecision[] {
+  let cappedIdx = 0;
+  return decisions.map((d, i) => {
+    const p = byId.get(d.playerId);
+    const uncapped = p?.status === 'Uncapped';
+    const cost = uncapped ? rules.uncappedRetentionCost : rules.retentionCosts[Math.min(cappedIdx++, rules.retentionCosts.length - 1)];
+    return { ...d, cost, retentionNumber: i + 1 };
+  });
+}
 
 export function RetentionView() {
   const {
     humanFranchiseId,
     franchises,
-    allPlayers,
     retentionDecisions,
-    addRetentionDecision,
-    removeRetentionDecision,
     setRetentionDecisions,
     completeRetention,
-    setPhase,
-    setAuctionSession,
     updateFranchise,
+    retentionComplete,
+    settings,
+    currentSeason,
   } = useGameStore();
+  const settingsSeed = settings.seed || 1;
 
-  const [showResultsModal, setShowResultsModal] = useState(false);
-  const [filterRole, setFilterRole] = useState<string>('All');
-  const [scoutingPlayer, setScoutingPlayer] = useState<Player | null>(null);
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('All');
+  const [query, setQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [scouting, setScouting] = useState<Player | null>(null);
+  const [showResults, setShowResults] = useState(retentionComplete);
 
-  const humanFranchise = franchises.find((f) => f.id === humanFranchiseId);
-  const theme = getTeamTheme(humanFranchiseId);
-  const rules = RETENTION_RULES_2026;
-
-  if (!humanFranchise) {
-    return <div className="p-8 text-center text-zinc-400 font-bold">Loading franchise...</div>;
-  }
-
-  // Get current human retentions
-  const currentRetentions = retentionDecisions.filter(
-    (d) => d.franchiseId === humanFranchiseId
+  const human = franchises.find((f) => f.id === humanFranchiseId);
+  const rules: RetentionRule = useMemo(
+    () => ({ ...RETENTION_RULES_2026, totalPurse: human?.totalPurse ?? RETENTION_RULES_2026.totalPurse }),
+    [human?.totalPurse]
   );
 
-  const humanRoster = humanFranchise.players;
-  const totalSpent = currentRetentions.reduce((sum, d) => sum + d.cost, 0);
-  const remainingPurse = rules.totalPurse - totalSpent;
+  if (!human) return <div className="p-10 text-center m-label">Loading franchise…</div>;
 
-  // Filter roster
-  const filteredRoster = humanRoster.filter((p) => {
-    if (filterRole === 'All') return true;
-    return p.role === filterRole;
-  });
+  const roster = [...human.players].sort((a, b) => b.ratings.overall - a.ratings.overall);
+  const byId = new Map(roster.map((p) => [p.id, p]));
+  const mine = retentionDecisions.filter((d) => d.franchiseId === humanFranchiseId);
+  const spent = mine.reduce((s, d) => s + d.cost, 0);
+  const purseLeft = human.totalPurse - spent;
+  const cappedUsed = mine.filter((d) => byId.get(d.playerId)?.status === 'Capped').length;
+  const uncappedUsed = mine.length - cappedUsed;
+  const overseasUsed = mine.filter((d) => byId.get(d.playerId)?.nationality === 'Overseas').length;
 
-  const handleToggleRetention = (player: Player) => {
-    const isRetained = currentRetentions.some((d) => d.playerId === player.id);
+  const nextCostFor = (p: Player) =>
+    p.status === 'Uncapped' ? rules.uncappedRetentionCost : rules.retentionCosts[Math.min(cappedUsed, rules.retentionCosts.length - 1)];
 
-    if (isRetained) {
-      removeRetentionDecision(humanFranchiseId, player.id);
-    } else {
-      const val = validateRetention(humanFranchise, player, currentRetentions, rules);
-      if (!val.valid) {
-        alert(val.reason);
-        return;
-      }
-      const decision = processRetention(
-        humanFranchise,
-        player,
-        currentRetentions.length + 1,
-        rules
-      );
-      addRetentionDecision(decision);
-    }
+  const setMine = (next: RetentionDecision[]) => {
+    const others = retentionDecisions.filter((d) => d.franchiseId !== humanFranchiseId);
+    setRetentionDecisions([...others, ...repriceRetentions(next, byId, rules)]);
   };
 
-  const handleFinalizeRetentions = () => {
-    const rng = createSeededRandom(Date.now());
-    let allDecisions: RetentionDecision[] = [...currentRetentions];
-
-    // Deduct purse and assign retained players for human team
-    const humanRetainedPlayers = humanRoster.filter((p) =>
-      currentRetentions.some((d) => d.playerId === p.id)
+  const toggle = (p: Player) => {
+    setError(null);
+    if (mine.some((d) => d.playerId === p.id)) {
+      setMine(mine.filter((d) => d.playerId !== p.id));
+      return;
+    }
+    const v = validateRetention(human, p, mine, rules);
+    if (!v.valid) {
+      setError(v.reason);
+      return;
+    }
+    const draft = repriceRetentions(
+      [...mine, { franchiseId: humanFranchiseId, playerId: p.id, playerName: p.name, cost: 0, retentionNumber: 0, isRTM: false }],
+      byId,
+      rules
     );
-    const humanReleased = humanRoster.filter(
-      (p) => !currentRetentions.some((d) => d.playerId === p.id)
-    );
+    const draftSpent = draft.reduce((s, d) => s + d.cost, 0);
+    const slotsToFill = human.minSquadSize - draft.length;
+    if (human.totalPurse - draftSpent < slotsToFill * 20) {
+      setError(`Retaining ${p.name} would leave too little purse to fill ${slotsToFill} more squad spots.`);
+      return;
+    }
+    setMine(draft.slice(0, -1).concat(draft[draft.length - 1]));
+  };
 
-    updateFranchise(humanFranchiseId, {
-      remainingPurse,
-      retainedPlayers: humanRetainedPlayers,
-      releasedPlayers: humanReleased,
-      players: humanRetainedPlayers,
+  const lockRetentions = () => {
+    const keptHuman = roster.filter((p) => mine.some((d) => d.playerId === p.id));
+    updateFranchise(human.id, {
+      remainingPurse: human.totalPurse - spent,
+      retainedPlayers: keptHuman,
+      players: keptHuman,
+      releasedPlayers: roster.filter((p) => !keptHuman.includes(p)),
     });
 
-    // Run CPU Retentions for the other 9 franchises
-    for (const franchise of franchises) {
-      if (franchise.id === humanFranchiseId) continue;
-
-      const cpuDecisions = cpuRetentionDecisions(franchise, rules, rng);
-      allDecisions = [...allDecisions, ...cpuDecisions];
-
-      const cpuSpent = cpuDecisions.reduce((sum, d) => sum + d.cost, 0);
-      const cpuRetained = franchise.players.filter((p) =>
-        cpuDecisions.some((d) => d.playerId === p.id)
-      );
-      const cpuReleased = franchise.players.filter(
-        (p) => !cpuDecisions.some((d) => d.playerId === p.id)
-      );
-
-      updateFranchise(franchise.id, {
-        remainingPurse: rules.totalPurse - cpuSpent,
-        retainedPlayers: cpuRetained,
-        releasedPlayers: cpuReleased,
-        players: cpuRetained,
+    const rng = createSeededRandom(settingsSeed + retentionDecisions.length + 1);
+    let all: RetentionDecision[] = [...mine];
+    for (const cpu of franchises.filter((f) => f.id !== humanFranchiseId)) {
+      const cpuRules = { ...RETENTION_RULES_2026, totalPurse: cpu.totalPurse };
+      const decisions = cpuRetentionDecisions(cpu, cpuRules, rng);
+      all = all.concat(decisions);
+      const kept = cpu.players.filter((p) => decisions.some((d) => d.playerId === p.id));
+      updateFranchise(cpu.id, {
+        remainingPurse: cpu.totalPurse - decisions.reduce((s, d) => s + d.cost, 0),
+        retainedPlayers: kept,
+        players: kept,
+        releasedPlayers: cpu.players.filter((p) => !kept.includes(p)),
       });
     }
-
-    setRetentionDecisions(allDecisions);
+    setRetentionDecisions(all);
     completeRetention();
-    setShowResultsModal(true);
+    setShowResults(true);
   };
 
-  const handleProceedToAuction = () => {
-    // Transition to the official Registration & Scouting phases
-    const initReg = useGameStore.getState().initializeRegistration;
-    initReg();
-  };
+  const filtered = roster.filter(
+    (p) =>
+      (roleFilter === 'All' || p.role === roleFilter) &&
+      (!query.trim() || p.name.toLowerCase().includes(query.trim().toLowerCase()))
+  );
+
+  const roles: RoleFilter[] = ['All', 'Batter', 'All-Rounder', 'Bowler', 'Wicketkeeper'];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      {/* Top Banner: Retention Rules & Purse Status (Neo-Box) */}
-      <div
-        className="neo-box p-5 sm:p-6 rounded-2xl relative overflow-hidden"
-        style={{
-          backgroundColor: theme.cardBg,
-        }}
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="neo-badge px-2.5 py-0.5 rounded bg-black text-amber-400 text-xs">
-                PHASE 1 OF 5: RETENTIONS
-              </span>
-              <span
-                className="neo-badge px-2.5 py-0.5 rounded text-xs"
-                style={{
-                  backgroundColor: theme.primary,
-                  color: theme.textLight,
-                }}
-              >
-                {humanFranchise.name}
-              </span>
-            </div>
-            <h2 className="text-2xl font-black uppercase text-white tracking-tight">
-              PRE-AUCTION RETENTION DESK
-            </h2>
-            <p className="text-xs text-zinc-300 font-medium max-w-xl mt-1 leading-relaxed">
-              Lock in up to 6 core players before the Mega Auction hammer drops. Retained player salaries are directly deducted from your initial ₹120.00 Cr purse.
-            </p>
-          </div>
+    <div className="max-w-[1320px] mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <PageHero
+        franchiseId={humanFranchiseId}
+        kicker={seasonLabel(currentSeason, settings)}
+        title="Retention Day"
+        subtitle={
+          <>Keep up to {rules.maxRetentions} players before the auction. Every crore you commit here comes out of your {formatPrice(human.totalPurse)} purse — everyone else goes back into the pool.</>
+        }
+        right={
+          retentionComplete ? (
+            <MButton variant="primary" size="lg" onClick={() => setShowResults(true)}>
+              View league retentions <ChevronRight className="w-4 h-4" />
+            </MButton>
+          ) : (
+            <MButton variant="primary" size="lg" onClick={lockRetentions}>
+              <Lock className="w-4 h-4" /> Lock {mine.length ? `${mine.length} retention${mine.length > 1 ? 's' : ''}` : 'no retentions'}
+            </MButton>
+          )
+        }
+      />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="neo-box-sm bg-black px-4 py-2.5 rounded-xl text-right">
-              <div className="text-[10px] text-zinc-400 font-black uppercase tracking-wider">Remaining Purse</div>
-              <div className="text-xl font-black text-emerald-400">{formatPrice(remainingPurse)}</div>
-            </div>
-
-            <div className="neo-box-sm bg-black px-4 py-2.5 rounded-xl text-right">
-              <div className="text-[10px] text-zinc-400 font-black uppercase tracking-wider">Slots Used</div>
-              <div className="text-xl font-black text-amber-400">
-                {currentRetentions.length} / {rules.maxRetentions}
-              </div>
-            </div>
-
-            <button
-              onClick={handleFinalizeRetentions}
-              className="neo-btn px-5 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2"
-              style={{
-                backgroundColor: theme.primary,
-                color: theme.textLight,
-              }}
-            >
-              <span>LOCK RETENTIONS & REVEAL</span>
-              <ArrowRight className="w-4 h-4 stroke-[3]" />
-            </button>
-          </div>
-        </div>
-
-        {/* Retention Slabs */}
-        <div className="mt-5 pt-4 border-t-2 border-black grid grid-cols-2 sm:grid-cols-6 gap-2 text-center text-xs">
-          <div className="neo-box-sm bg-zinc-950 p-2 rounded-lg">
-            <span className="text-zinc-400 block text-[10px] font-bold">SLOT 1 (CAPPED)</span>
-            <span className="font-black text-amber-400">₹18.00 Cr</span>
-          </div>
-          <div className="neo-box-sm bg-zinc-950 p-2 rounded-lg">
-            <span className="text-zinc-400 block text-[10px] font-bold">SLOT 2 (CAPPED)</span>
-            <span className="font-black text-amber-400">₹14.00 Cr</span>
-          </div>
-          <div className="neo-box-sm bg-zinc-950 p-2 rounded-lg">
-            <span className="text-zinc-400 block text-[10px] font-bold">SLOT 3 (CAPPED)</span>
-            <span className="font-black text-amber-400">₹11.00 Cr</span>
-          </div>
-          <div className="neo-box-sm bg-zinc-950 p-2 rounded-lg">
-            <span className="text-zinc-400 block text-[10px] font-bold">SLOT 4 (CAPPED)</span>
-            <span className="font-black text-amber-400">₹18.00 Cr</span>
-          </div>
-          <div className="neo-box-sm bg-zinc-950 p-2 rounded-lg">
-            <span className="text-zinc-400 block text-[10px] font-bold">SLOT 5 (CAPPED)</span>
-            <span className="font-black text-amber-400">₹14.00 Cr</span>
-          </div>
-          <div className="neo-box-sm bg-zinc-950 p-2 rounded-lg">
-            <span className="text-zinc-400 block text-[10px] font-bold">UNCAPPED SLOTS</span>
-            <span className="font-black text-emerald-400">₹4.00 Cr</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Role Filter Tabs (Neo-Pills) */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          {['All', 'Batter', 'All-Rounder', 'Bowler', 'Wicketkeeper'].map((role) => (
-            <button
-              key={role}
-              onClick={() => setFilterRole(role)}
-              className={`neo-btn px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
-                filterRole === role
-                  ? 'bg-amber-400 text-black'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white'
-              }`}
-            >
-              {role}
-            </button>
-          ))}
-        </div>
-        <div className="neo-badge px-2.5 py-1 rounded bg-black text-zinc-300 text-[11px]">
-          {filteredRoster.length} SQUAD CANDIDATES
-        </div>
-      </div>
-
-      {/* Roster Cards Grid (Neo-Brutalist Player Cards) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredRoster.map((player) => {
-          const retentionIndex = currentRetentions.findIndex((d) => d.playerId === player.id);
-          const isRetained = retentionIndex !== -1;
-          const assignedDecision = isRetained ? currentRetentions[retentionIndex] : null;
-
+      {/* Retention slot tray */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {Array.from({ length: rules.maxRetentions }).map((_, i) => {
+          const d = mine[i];
+          const p = d ? byId.get(d.playerId) : undefined;
           return (
             <div
-              key={player.id}
-              className={`neo-box p-4 rounded-xl flex flex-col justify-between transition-all ${
-                isRetained
-                  ? 'bg-zinc-950 ring-2 ring-amber-400'
-                  : 'bg-zinc-900/90 hover:bg-zinc-900'
+              key={i}
+              className={`relative rounded-[3px] p-3 min-h-[92px] flex flex-col justify-between ${
+                p ? 'm-panel border-ink/70' : 'border border-dashed border-[var(--m-line-strong)] bg-ink/[0.01]'
               }`}
-              style={{
-                borderColor: '#000000',
-              }}
             >
-              <div>
-                {/* Header: Name, Role, Rating */}
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-sm text-white">{player.name}</span>
-                      {player.nationality === 'Overseas' && (
-                        <span className="neo-badge px-1.5 py-0.2 rounded bg-sky-400 text-black text-[9px]">
-                          ✈ OS
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-zinc-400 font-bold mt-0.5">
-                      {player.role} • {player.age} yrs • {player.status}
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span
-                      className="neo-badge text-xs px-2 py-0.5 rounded"
-                      style={{
-                        backgroundColor: theme.primary,
-                        color: theme.textLight,
-                      }}
-                    >
-                      {player.ratings.overall} OVR
-                    </span>
-                  </div>
-                </div>
-
-                {/* Key Stats Bar (Neo-Brutalist Stat Ticker) */}
-                <div className="grid grid-cols-4 gap-1 mt-3 text-center text-[10px] py-1.5 px-2 rounded-lg bg-black border-2 border-zinc-800 text-zinc-300 font-black">
-                  <div>
-                    <span className="text-zinc-500 block text-[9px]">BAT</span>
-                    <span className="text-white">{player.ratings.batting}</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[9px]">BOWL</span>
-                    <span className="text-white">{player.ratings.bowling}</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[9px]">PWR</span>
-                    <span className="text-amber-400">{player.ratings.powerHitting}</span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-500 block text-[9px]">POT</span>
-                    <span className="text-emerald-400">{player.ratings.potential}</span>
-                  </div>
-                </div>
-
-                {/* Career Snapshot */}
-                <div className="mt-2 text-[11px] text-zinc-400 font-bold flex items-center justify-between">
-                  <span>{player.stats.matches} Matches</span>
-                  {player.stats.runs > 0 && <span>{player.stats.runs} runs (SR {player.stats.strikeRate})</span>}
-                  {player.stats.wickets > 0 && <span>{player.stats.wickets} wkts</span>}
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="m-label !text-[0.6rem]">Slot {i + 1}</span>
+                {d && <span className="font-display font-extrabold text-[var(--m-gold)]">{formatPrice(d.cost)}</span>}
               </div>
-
-              {/* Action Button & Cost */}
-              <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between">
-                <div>
-                  {isRetained ? (
-                    <div>
-                      <span className="neo-badge px-1.5 py-0.5 rounded bg-amber-400 text-black text-[10px]">
-                        SLOT #{assignedDecision?.retentionNumber}
-                      </span>
-                      <span className="text-zinc-300 block text-[10px] font-black mt-0.5">
-                        Cost: {formatPrice(assignedDecision?.cost || 0)}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-[11px] text-zinc-400 font-bold">
-                      Est. Cost:{' '}
-                      <span className="text-white font-black">
-                        {player.status === 'Uncapped' ? '₹4.00 Cr' : '₹11-18 Cr'}
-                      </span>
-                    </div>
+              {p ? (
+                <div className="flex items-center gap-2 mt-2">
+                  <OvrBadge ovr={p.ratings.overall} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display font-bold uppercase truncate leading-tight">{p.name}</div>
+                    <div className="text-[10px] text-[var(--m-faint)]">{p.status} · {p.role}</div>
+                  </div>
+                  {!retentionComplete && (
+                    <button onClick={() => toggle(p)} className="text-[var(--m-faint)] hover:text-[var(--m-red)]" aria-label={`Release ${p.name}`}>
+                      <X className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setScoutingPlayer(player)}
-                    className="neo-btn px-2.5 py-1.5 rounded-lg text-xs font-black uppercase bg-zinc-800 hover:bg-zinc-700 text-amber-400"
-                    title="Scout Player Intelligence Dossier"
-                  >
-                    SCOUT
-                  </button>
-
-                  <button
-                    onClick={() => handleToggleRetention(player)}
-                    className={`neo-btn px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 ${
-                      isRetained
-                        ? 'bg-red-500 text-white'
-                        : 'bg-emerald-400 text-black'
-                    }`}
-                  >
-                    {isRetained ? (
-                      <>
-                        <X className="w-3.5 h-3.5 stroke-[3]" /> Release
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-3.5 h-3.5 stroke-[3]" /> Retain
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+              ) : (
+                <div className="text-xs text-[var(--m-faint)] mt-2">Empty</div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Retention Results Modal (Neo-Brutalist Modal) */}
-      {showResultsModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="neo-box-lg bg-zinc-950 rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="p-5 border-b-[2.5px] border-black bg-zinc-900 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-black uppercase text-white flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-400" /> RETENTION WINDOW CLOSED
-                </h3>
-                <p className="text-xs text-zinc-400 font-bold mt-0.5">
-                  All 10 IPL franchises have submitted their retained core.
-                </p>
-              </div>
-              <button
-                onClick={handleProceedToAuction}
-                className="neo-btn px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs uppercase flex items-center gap-2"
-              >
-                <span>ENTER AUCTION ROOM</span>
-                <ArrowRight className="w-4 h-4 stroke-[3]" />
-              </button>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
+        <Panel
+          title={`${human.shortName} roster · ${roster.length} players`}
+          right={
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--m-faint)]" />
+              <input className="m-input !py-1.5 !pl-8 !w-44" placeholder="Search roster" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
-
-            <div className="p-5 overflow-y-auto space-y-3 flex-1">
-              {franchises.map((f) => {
-                const teamRetentions = retentionDecisions.filter((d) => d.franchiseId === f.id);
-                const fTheme = getTeamTheme(f.id);
-
-                return (
-                  <div
-                    key={f.id}
-                    className="neo-box-sm p-3.5 rounded-xl bg-zinc-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-lg border-2 border-black flex items-center justify-center font-black text-sm shadow-[2px_2px_0px_#000]"
-                        style={{
-                          backgroundColor: fTheme.primary,
-                          color: fTheme.textLight,
-                        }}
-                      >
-                        {f.abbreviation}
-                      </div>
-                      <div>
-                        <div className="font-black text-sm text-white flex items-center gap-2">
-                          {f.name}
-                          {f.id === humanFranchiseId && (
-                            <span className="neo-badge bg-amber-400 text-black text-[9px] px-1.5 py-0.2 rounded">
-                              YOU
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-zinc-400 flex flex-wrap gap-1.5 mt-1 font-medium">
-                          {teamRetentions.length === 0 ? (
-                            <span className="text-zinc-500 italic text-xs">No retentions (Full purse preserved)</span>
-                          ) : (
-                            teamRetentions.map((d) => (
-                              <span
-                                key={d.playerId}
-                                className="neo-badge px-2 py-0.5 rounded bg-black text-zinc-300 text-[10px]"
-                              >
-                                {d.playerName} ({formatPrice(d.cost)})
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right sm:self-center">
-                      <span className="text-[10px] text-zinc-400 uppercase block font-black">
-                        AUCTION PURSE
-                      </span>
-                      <span className="text-base font-black text-emerald-400">
-                        {formatPrice(f.remainingPurse)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+          }
+          bodyClassName="p-0"
+        >
+          <Tabs
+            className="px-2"
+            tabs={roles.map((r) => ({ id: r, label: r === 'All' ? 'All' : r + 's', count: r === 'All' ? roster.length : roster.filter((p) => p.role === r).length }))}
+            value={roleFilter}
+            onChange={setRoleFilter}
+          />
+          {error && (
+            <div className="mx-3 mt-3 flex items-center gap-2 px-3 py-2 rounded-[2px] border border-[var(--m-red)]/50 bg-[var(--m-red)]/10 text-sm" role="alert">
+              <AlertTriangle className="w-4 h-4 text-[var(--m-red)] shrink-0" /> {error}
             </div>
+          )}
+          <div className="overflow-x-auto m-scroll">
+            <table className="m-table">
+              <thead>
+                <tr>
+                  <th className="w-12">OVR</th>
+                  <th>Player</th>
+                  <th>Role</th>
+                  <th className="text-right">Potential</th>
+                  <th className="text-right hidden lg:table-cell">Market value</th>
+                  <th className="text-right">Retain cost</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => {
+                  const d = mine.find((x) => x.playerId === p.id);
+                  return (
+                    <tr key={p.id} data-selected={!!d}>
+                      <td><OvrBadge ovr={p.ratings.overall} size="sm" /></td>
+                      <td>
+                        <button className="text-left" onClick={() => setScouting(p)}>
+                          <div className="font-display font-bold uppercase text-[15px] leading-tight hover:underline">{p.name}</div>
+                          <div className="text-[11px] text-[var(--m-faint)]">{p.country} · {p.age} yrs · {p.status}</div>
+                        </button>
+                      </td>
+                      <td><div className="flex gap-1"><RoleTag role={p.role} />{p.nationality === 'Overseas' && <OverseasTag />}</div></td>
+                      <td className="text-right tabular-nums text-[var(--m-green)]">{p.ratings.potential}</td>
+                      <td className="text-right tabular-nums text-[var(--m-dim)] hidden lg:table-cell">{formatPrice(p.estimatedMarketValue)}</td>
+                      <td className="text-right tabular-nums font-display font-bold">
+                        {d ? <span className="text-[var(--m-gold)]">{formatPrice(d.cost)}</span> : formatPrice(nextCostFor(p))}
+                      </td>
+                      <td className="text-right">
+                        {!retentionComplete && (
+                          <MButton size="sm" variant={d ? 'danger' : 'default'} onClick={() => toggle(p)}>
+                            {d ? 'Release' : 'Retain'}
+                          </MButton>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        </Panel>
 
-      {/* Player Intelligence Scouting Dossier Modal */}
-      {scoutingPlayer && humanFranchise && (
-        <PlayerScoutingModal
-          player={scoutingPlayer}
-          franchise={humanFranchise}
-          onClose={() => setScoutingPlayer(null)}
-        />
-      )}
+        <Panel title="Your budget" className="xl:sticky xl:top-36">
+          <div className="grid grid-cols-2 gap-2">
+            <StatTile label="Auction purse" value={formatPrice(purseLeft)} tone="green" />
+            <StatTile label="Committed" value={formatPrice(spent)} tone="gold" />
+          </div>
+          <div className="mt-3 m-meter"><span style={{ width: `${(spent / human.totalPurse) * 100}%`, background: 'var(--m-gold)' }} /></div>
+          <div className="mt-5 space-y-2">
+            {[
+              ['Retained', mine.length, rules.maxRetentions],
+              ['Capped', cappedUsed, rules.maxCappedRetentions],
+              ['Uncapped', uncappedUsed, rules.maxUncappedRetentions],
+              ['Overseas', overseasUsed, rules.maxOverseasRetentions],
+            ].map(([k, v, m]) => (
+              <div key={k as string} className="flex items-center justify-between text-sm">
+                <span className="text-[var(--m-dim)]">{k}</span>
+                <span className="font-display font-extrabold tabular-nums">
+                  <span className={Number(v) >= Number(m) ? 'text-[var(--m-gold)]' : ''}>{v}</span>
+                  <span className="text-[var(--m-faint)]"> / {m}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--m-faint)] mt-5 leading-relaxed flex gap-1.5">
+            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Capped players cost {rules.retentionCosts.slice(0, 5).map((c) => c / 100).join(' / ')} Cr in the order you retain them. Uncapped players cost{' '}
+              {formatPrice(rules.uncappedRetentionCost)}.
+            </span>
+          </p>
+        </Panel>
+      </div>
+
+      <RetentionResults open={showResults} onClose={() => setShowResults(false)} />
+
+      {scouting && <PlayerScoutingModal player={scouting} franchise={human} onClose={() => setScouting(null)} />}
     </div>
+  );
+}
+
+function RetentionResults({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { franchises, retentionDecisions, humanFranchiseId, initializeRegistration, retentionComplete } = useGameStore();
+  if (!retentionComplete) return null;
+  return (
+    <Modal open={open} onClose={onClose} width="max-w-6xl" labelledBy="ret-results-title">
+      <div className="m-panel-head !py-4">
+        <div>
+          <div className="m-label">Retention window closed</div>
+          <h2 id="ret-results-title" className="m-display text-3xl italic">Around the league</h2>
+        </div>
+        <MButton variant="primary" size="lg" onClick={initializeRegistration}>
+          Open the player pool <ChevronRight className="w-4 h-4" />
+        </MButton>
+      </div>
+      <div className="p-4 overflow-y-auto m-scroll grid grid-cols-1 md:grid-cols-2 gap-3">
+        {franchises.map((f) => {
+          const ds = retentionDecisions.filter((d) => d.franchiseId === f.id);
+          const byId = new Map(f.players.map((p) => [p.id, p]));
+          return (
+            <div key={f.id} className={`rounded-[3px] border p-3 ${f.id === humanFranchiseId ? 'border-ink/70' : 'border-[var(--m-line)]'} bg-ink/[0.02]`}>
+              <div className="flex items-center gap-3">
+                <TeamCrest franchiseId={f.id} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-display font-extrabold uppercase truncate">
+                    {f.name} {f.id === humanFranchiseId && <span className="m-chip ml-1">You</span>}
+                  </div>
+                  <div className="text-[11px] text-[var(--m-faint)]">{ds.length} retained · {formatPrice(ds.reduce((s, d) => s + d.cost, 0))} committed</div>
+                </div>
+                <div className="text-right">
+                  <div className="m-label !text-[0.58rem]">Auction purse</div>
+                  <div className="font-display font-extrabold text-lg text-[var(--m-green)]">{formatPrice(f.remainingPurse)}</div>
+                </div>
+              </div>
+              <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                {ds.map((d) => {
+                  const p = byId.get(d.playerId);
+                  return (
+                    <li key={d.playerId} className="flex items-center gap-2 text-sm px-2 py-1 bg-ink/5 rounded-[2px]">
+                      {p && <OvrBadge ovr={p.ratings.overall} size="sm" />}
+                      <span className="truncate flex-1">{d.playerName}</span>
+                      <span className="font-display font-bold text-[var(--m-gold)]">{formatPrice(d.cost)}</span>
+                    </li>
+                  );
+                })}
+                {ds.length === 0 && <li className="text-xs text-[var(--m-faint)] italic">Full reset — no retentions</li>}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }

@@ -7,6 +7,7 @@
 import type { Franchise, Player } from '@/lib/types/game';
 import type { RegisteredPlayer } from '@/lib/types/registration';
 import type { FranchiseShortlist, ShortlistPriority, ShortlistEntry } from '@/lib/types/scouting';
+import { isPlayerEligibleForAuction } from '../eligibility/auction-eligibility-engine';
 
 /**
  * Generates an independent, strategically targeted shortlist for a single CPU franchise.
@@ -36,8 +37,14 @@ export function generateCpuFranchiseShortlist(
   // Personality modifiers
   const persona = franchise.gmPersonality;
 
-  // 2. Score every registered player for this specific franchise
-  const scoredPlayers = registrationPool.map((p) => {
+  // 2. Filter strictly for auction-eligible cricketers (excludes retired, banned, or ineligible players)
+  const eligibleRegistrationPool = registrationPool.filter((p) => {
+    const evalResult = isPlayerEligibleForAuction(p, seasonYear);
+    return evalResult.isEligible;
+  });
+
+  // 3. Score every eligible registered player for this specific franchise
+  const scoredPlayers = eligibleRegistrationPool.map((p) => {
     let score = p.ratings.overall * 1.0;
 
     // Tactical role match

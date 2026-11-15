@@ -282,13 +282,48 @@ const activeSessionPersonalities: Map<string, Map<string, GMPersonalityArchetype
 /**
  * Returns the active GM personality for a given franchise in a specific auction session.
  */
-export function getFranchiseActivePersonality(sessionId: string, franchiseId: string): GMPersonalityArchetype {
+export function getFranchiseActivePersonality(sessionId: string, franchise: Franchise | string): GMPersonalityArchetype {
+  const franchiseId = typeof franchise === 'string' ? franchise : franchise.id;
   const sessionMap = activeSessionPersonalities.get(sessionId);
   if (sessionMap && sessionMap.has(franchiseId)) {
     return sessionMap.get(franchiseId)!;
   }
-  const baseProfile = FRANCHISE_GM_PROFILES[franchiseId];
-  return baseProfile ? baseProfile.initialArchetype : 'Balanced squad builder';
+  return seasonArchetype(franchise);
+}
+
+/** This window's plan: the reviewed strategy if there is one, else the IRL philosophy. */
+function seasonArchetype(franchise: Franchise | string): GMPersonalityArchetype {
+  if (typeof franchise !== 'string' && franchise.strategy?.archetype && franchise.strategy.archetype in GM_PERSONALITY_ARCHETYPES) {
+    return franchise.strategy.archetype as GMPersonalityArchetype;
+  }
+  const id = typeof franchise === 'string' ? franchise : franchise.id;
+  return FRANCHISE_GM_PROFILES[id]?.initialArchetype ?? 'Balanced squad builder';
+}
+
+/**
+ * Scouting profile for this window: the franchise's reviewed strategy (role focus,
+ * domestic premium, star aggression) layered over its IRL defaults.
+ */
+export function getActiveGMProfile(franchise: Franchise | string): FranchiseGMProfile {
+  const id = typeof franchise === 'string' ? franchise : franchise.id;
+  const base: FranchiseGMProfile = FRANCHISE_GM_PROFILES[id] ?? {
+    franchiseId: id,
+    name: id,
+    initialArchetype: 'Balanced squad builder',
+    currentArchetype: 'Balanced squad builder',
+    domesticPremium: 1.15,
+    roleAffinities: {},
+    starAggression: 0.8,
+  };
+  const st = typeof franchise === 'string' ? undefined : franchise.strategy;
+  if (!st) return base;
+  return {
+    ...base,
+    currentArchetype: seasonArchetype(franchise),
+    domesticPremium: st.domesticPremium,
+    starAggression: st.starAggression,
+    roleAffinities: st.roleAffinities as Partial<Record<TacticalRole, number>>,
+  };
 }
 
 /**
@@ -308,7 +343,7 @@ export function evolveFranchisePersonality(
     ? Math.min(1.0, (session.currentPlayerIndex + 1) / session.playerPool.length)
     : 0;
 
-  let activeArchetype = FRANCHISE_GM_PROFILES[franchise.id]?.initialArchetype || 'Balanced squad builder';
+  let activeArchetype = seasonArchetype(franchise);
 
   // 1. Critical Budget Pressure (< 80L per remaining slot)
   // Forces team into strict value-focused or risk-averse mode regardless of initial aggression
