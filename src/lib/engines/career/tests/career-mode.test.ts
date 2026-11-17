@@ -12,6 +12,7 @@ import type { CareerState } from '@/lib/types/career';
 import { progressPlayerAttributes, progressAllPlayers } from '../player-progression';
 import { calculateRetirementProbability, processSeasonRetirements } from '../retirement-engine';
 import { generateRookieDraftClass } from '../player-generator';
+import { GLOBAL_PLAYERS } from '@/lib/data/players';
 import {
   getAuctionTypeForSeason,
   getLeaguePurseForSeason,
@@ -154,19 +155,34 @@ async function runCareerModeTests() {
   // TEST 4: Future Player Pool Generation
   // ------------------------------------------------------------
   console.log('\n--- TEST 4: Future Player Pool Generation ---');
-  const rookieDraftClass = generateRookieDraftClass(2027, 24);
-  assert(rookieDraftClass.length === 24, `Generated 24 rookies for Season 2027`);
+  // ~34 a year: 26 Indian (wonderkids, hot prospects, ready-now performers, standard) + 8 overseas.
+  const rookieDraftClass = generateRookieDraftClass(2027, 42, GLOBAL_PLAYERS);
+  assert(rookieDraftClass.length === 34, `Generated 34 rookies for Season 2027 (${rookieDraftClass.length})`);
 
   const indianRookies = rookieDraftClass.filter((p) => p.nationality === 'Indian');
   const overseasRookies = rookieDraftClass.filter((p) => p.nationality === 'Overseas');
-  assert(indianRookies.length >= 15 && indianRookies.length <= 18, `70% Indian rookie talent proportion maintained (${indianRookies.length}/24)`);
-  assert(overseasRookies.length >= 6 && overseasRookies.length <= 9, `30% Overseas rookie talent proportion maintained (${overseasRookies.length}/24)`);
+  assert(indianRookies.length === 26 && overseasRookies.length === 8, `26 Indian + 8 overseas rookies (${indianRookies.length} + ${overseasRookies.length})`);
+  const wonderkids = indianRookies.filter((p) => p.age <= 19 && p.ratings.potential >= 88);
+  assert(wonderkids.length >= 2 && wonderkids.length <= 4, `2–3 wonderkids (POT 88+) in the class (${wonderkids.map((p) => `${p.name} ${p.ratings.overall}/${p.ratings.potential}`).join(', ')})`);
+  const readyNow = indianRookies.filter((p) => p.age >= 22 && p.ratings.overall >= 74);
+  assert(readyNow.length >= 7, `ready-now domestic performers in the class (${readyNow.length})`);
+  const wkShare = rookieDraftClass.filter((p) => p.role === 'Wicketkeeper').length / rookieDraftClass.length;
+  assert(wkShare < 0.3, `roles are weighted, not cycled (${(wkShare * 100).toFixed(0)}% keepers)`);
 
   for (const r of rookieDraftClass) {
-    assert(r.age >= 18 && r.age <= 22, `Rookie ${r.name} is age ${r.age} (between 18 and 22)`);
-    assert(r.ratings.overall >= 65 && r.ratings.overall <= 78, `Rookie ${r.name} OVR ${r.ratings.overall} is bounded (no overpowered cheats)`);
+    assert(r.age >= 16 && r.age <= 29, `Rookie ${r.name} is age ${r.age} (16–29)`);
+    assert(r.ratings.overall >= 65 && r.ratings.overall <= 80, `Rookie ${r.name} OVR ${r.ratings.overall} is bounded (no overpowered cheats)`);
     assert(r.id.startsWith('gen_2027_'), `Rookie ID follows reproducible format (${r.id})`);
+    assert(!!r.development?.note, `Rookie ${r.name} carries a scouting note (${r.development?.note})`);
+    assert([20, 30, 40].includes(r.basePrice), `Rookie ${r.name} has an official uncapped base price (${r.basePrice}L)`);
   }
+  const names = new Set(GLOBAL_PLAYERS.map((p) => p.name.toLowerCase()));
+  assert(rookieDraftClass.every((r) => !names.has(r.name.toLowerCase())), 'No rookie shares a name with an existing player');
+  assert(new Set(rookieDraftClass.map((r) => r.name)).size === rookieDraftClass.length, 'Rookie names are unique within the class');
+  const again = generateRookieDraftClass(2027, 42, GLOBAL_PLAYERS);
+  assert(JSON.stringify(again) === JSON.stringify(rookieDraftClass), 'Same season + seed = same class (deterministic)');
+  const other = generateRookieDraftClass(2027, 7, GLOBAL_PLAYERS);
+  assert(other.map((p) => p.name).join() !== rookieDraftClass.map((p) => p.name).join(), 'A different career seed gets a different class');
 
 
   // ------------------------------------------------------------

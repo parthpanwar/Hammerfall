@@ -7,7 +7,7 @@
 
 import { PLAYERS } from '../src/lib/data/players';
 import { FRANCHISES } from '../src/lib/data/franchises';
-import type { GameState, Franchise, Player, Fixture } from '../src/lib/types/game';
+import type { GameState, Franchise, Player, Fixture, PlayerSeasonStats, BatsmanInnings, BowlerSpell } from '../src/lib/types/game';
 import type { CareerState } from '../src/lib/types/career';
 import { initializeFranchiseHistory } from '../src/lib/engines/career/history-tracker';
 import { createInitialContracts } from '../src/lib/engines/career/contract-engine';
@@ -159,90 +159,8 @@ async function run10SeasonDynastySimulation() {
       fix.isCompleted = true;
       fix.result = sim.matchResult;
 
-      // Accumulate season stats
-      for (const b of sim.innings1.batsmen) {
-        if (!gameState.playerSeasonStats[b.playerId]) {
-          gameState.playerSeasonStats[b.playerId] = {
-            playerId: b.playerId,
-            seasonYear,
-            franchiseId: t1.id,
-            matches: 0,
-            innings: 0,
-            runs: 0,
-            ballsFaced: 0,
-            battingAverage: 0,
-            strikeRate: 0,
-            fours: 0,
-            sixes: 0,
-            fifties: 0,
-            hundreds: 0,
-            highScore: 0,
-            wickets: 0,
-            oversBowled: 0,
-            runsConceded: 0,
-            bowlingAverage: 0,
-            economyRate: 0,
-            bestBowling: '0/0',
-            catches: 0,
-            playerOfMatch: 0,
-            dotBallPercentage: 0,
-            boundaryPercentage: 0,
-            powerplayRuns: 0,
-            deathOverRuns: 0,
-            powerplayWickets: 0,
-            deathOverWickets: 0,
-          };
-        }
-        const st = gameState.playerSeasonStats[b.playerId];
-        st.matches++;
-        st.runs += b.runs;
-        st.ballsFaced += b.balls;
-        st.fours += b.fours;
-        st.sixes += b.sixes;
-        if (b.runs > st.highScore) st.highScore = b.runs;
-      }
-
-      for (const b of sim.innings2.batsmen) {
-        if (!gameState.playerSeasonStats[b.playerId]) {
-          gameState.playerSeasonStats[b.playerId] = {
-            playerId: b.playerId,
-            seasonYear,
-            franchiseId: t2.id,
-            matches: 0,
-            innings: 0,
-            runs: 0,
-            ballsFaced: 0,
-            battingAverage: 0,
-            strikeRate: 0,
-            fours: 0,
-            sixes: 0,
-            fifties: 0,
-            hundreds: 0,
-            highScore: 0,
-            wickets: 0,
-            oversBowled: 0,
-            runsConceded: 0,
-            bowlingAverage: 0,
-            economyRate: 0,
-            bestBowling: '0/0',
-            catches: 0,
-            playerOfMatch: 0,
-            dotBallPercentage: 0,
-            boundaryPercentage: 0,
-            powerplayRuns: 0,
-            deathOverRuns: 0,
-            powerplayWickets: 0,
-            deathOverWickets: 0,
-          };
-        }
-        const st = gameState.playerSeasonStats[b.playerId];
-        st.matches++;
-        st.runs += b.runs;
-        st.ballsFaced += b.balls;
-        st.fours += b.fours;
-        st.sixes += b.sixes;
-        if (b.runs > st.highScore) st.highScore = b.runs;
-      }
+      // Accumulate season stats: one appearance per XI member, batting and bowling.
+      accumulateMatchStats(gameState.playerSeasonStats, seasonYear, t1.id, xi1.players, t2.id, xi2.players, sim);
     }
 
     // 3. Standings & Playoffs
@@ -320,6 +238,7 @@ async function run10SeasonDynastySimulation() {
     gameState.seasonAwards = awards;
 
     // 4. Advance to Next Season via Multi-Season Controller
+    finalizeSeasonRates(gameState.playerSeasonStats);
     if (s < 10) {
       if (process.env.DYN) {
         const perfs = gameState.allPlayers
@@ -401,7 +320,61 @@ async function run10SeasonDynastySimulation() {
   }
 }
 
-run10SeasonDynastySimulation().catch((err) => {
+function emptyStats(playerId: string, seasonYear: number, franchiseId: string): PlayerSeasonStats {
+  return {
+    playerId, seasonYear, franchiseId, matches: 0, innings: 0, runs: 0, ballsFaced: 0, battingAverage: 0, strikeRate: 0,
+    fours: 0, sixes: 0, fifties: 0, hundreds: 0, highScore: 0, wickets: 0, oversBowled: 0, runsConceded: 0,
+    bowlingAverage: 0, economyRate: 0, bestBowling: '0/0', catches: 0, playerOfMatch: 0, dotBallPercentage: 0,
+    boundaryPercentage: 0, powerplayRuns: 0, deathOverRuns: 0, powerplayWickets: 0, deathOverWickets: 0,
+  };
+}
+
+/** Fold one simulated match into the season table (both XIs, batting and bowling). */
+export function accumulateMatchStats(
+  table: Record<string, PlayerSeasonStats>,
+  seasonYear: number,
+  team1Id: string,
+  xi1: string[],
+  team2Id: string,
+  xi2: string[],
+  sim: { innings1: { batsmen: BatsmanInnings[]; bowlers: BowlerSpell[] }; innings2: { batsmen: BatsmanInnings[]; bowlers: BowlerSpell[] } }
+) {
+  const get = (id: string, fid: string) => (table[id] ??= emptyStats(id, seasonYear, fid));
+  for (const id of xi1) get(id, team1Id).matches++;
+  for (const id of xi2) get(id, team2Id).matches++;
+  for (const b of [...sim.innings1.batsmen, ...sim.innings2.batsmen]) {
+    if (b.balls <= 0) continue;
+    const st = table[b.playerId];
+    if (!st) continue;
+    st.innings++;
+    st.runs += b.runs;
+    st.ballsFaced += b.balls;
+    st.fours += b.fours;
+    st.sixes += b.sixes;
+    if (b.runs >= 100) st.hundreds++;
+    else if (b.runs >= 50) st.fifties++;
+    if (b.runs > st.highScore) st.highScore = b.runs;
+  }
+  for (const b of [...sim.innings1.bowlers, ...sim.innings2.bowlers]) {
+    const st = table[b.playerId];
+    if (!st || b.overs <= 0) continue;
+    st.oversBowled += b.overs;
+    st.wickets += b.wickets;
+    st.runsConceded += b.runs;
+  }
+}
+
+/** Derived rates: seasonPerformance reads SR and economy, which were left at 0 before. */
+export function finalizeSeasonRates(table: Record<string, PlayerSeasonStats>) {
+  for (const st of Object.values(table)) {
+    st.strikeRate = st.ballsFaced > 0 ? (st.runs / st.ballsFaced) * 100 : 0;
+    st.battingAverage = st.innings > 0 ? st.runs / st.innings : 0;
+    st.economyRate = st.oversBowled > 0 ? st.runsConceded / st.oversBowled : 0;
+    st.bowlingAverage = st.wickets > 0 ? st.runsConceded / st.wickets : 0;
+  }
+}
+
+if (process.argv[1]?.includes('simulate_10_seasons')) run10SeasonDynastySimulation().catch((err) => {
   console.error('Benchmark error:', err);
   process.exit(1);
 });

@@ -6,6 +6,7 @@
 // panel for every team that updates after each hammer.
 // ============================================================
 
+import { prospectLabel, showDevelopmentNote } from '@/lib/engines/career/prospect-label';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { auctionTypeFor } from '@/lib/flow/season-flow';
@@ -332,14 +333,15 @@ export function AuctionHall() {
                         <span className="m-chip">{p!.status}</span>
                         <span className="m-chip">Age {p!.age}</span>
                         <PedigreeChip player={p!} season={currentSeason} />
+                        {prospectLabel(p!) && <span className="m-chip">{prospectLabel(p!)}</span>}
                       </div>
                       <h2 className="m-display italic text-4xl sm:text-5xl leading-[0.9] break-words">{p!.name}</h2>
                       <div className="text-sm text-[var(--m-dim)] mt-1">
                         {p!.country} · {p!.battingHand}-hand bat{p!.bowlingStyle !== 'None' ? ` · ${p!.bowlingStyle}` : ''}
                       </div>
                       <div className="text-xs text-[var(--m-faint)] mt-1">{iplLine(p!)}</div>
-                      {p!.development && p!.development.season >= currentSeason - 1 && p!.development.trend !== 'Steady' && (
-                        <div className="text-xs text-[var(--m-dim)] mt-0.5">{p!.development.note}</div>
+                      {showDevelopmentNote(p!, currentSeason) && (
+                        <div className="text-xs text-[var(--m-dim)] mt-0.5">{p!.development!.note}</div>
                       )}
                     </div>
                   </div>

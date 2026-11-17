@@ -17,13 +17,13 @@ export function TournamentHub() {
   const {
     fixtures,
     franchises,
-    playingXIs,
     humanFranchiseId,
     updateFixture,
     setStandings,
     setPlayoffFixtures,
     setPhase,
     updatePlayerSeasonStats,
+    recordMatchForm,
   } = useGameStore();
 
   const [activeTab, setActiveTab] = useState<'hub' | 'match'>('hub');
@@ -58,10 +58,12 @@ export function TournamentHub() {
   };
 
   const runSilentSim = (fixture: Fixture, updatedFixturesList: Fixture[]) => {
-    const t1 = franchises.find((f) => f.id === fixture.team1Id);
-    const t2 = franchises.find((f) => f.id === fixture.team2Id);
-    const xi1 = t1 ? playingXIs[t1.id] : null;
-    const xi2 = t2 ? playingXIs[t2.id] : null;
+    // Read the live store: form and CPU XIs change after every match of a batch sim.
+    const live = useGameStore.getState();
+    const t1 = live.franchises.find((f) => f.id === fixture.team1Id);
+    const t2 = live.franchises.find((f) => f.id === fixture.team2Id);
+    const xi1 = t1 ? live.playingXIs[t1.id] : null;
+    const xi2 = t2 ? live.playingXIs[t2.id] : null;
 
     if (!t1 || !t2 || !xi1 || !xi2) return;
 
@@ -103,6 +105,16 @@ export function TournamentHub() {
         }
       }
       for (const id of [...xi1.players, ...xi2.players]) if (!counted.has(id)) updatePlayerSeasonStats(id, { matches: appearance(id) });
+      recordMatchForm({
+        matchKey: fixture.id,
+        team1Id: fixture.team1Id,
+        team2Id: fixture.team2Id,
+        team1XI: xi1.players,
+        team2XI: xi2.players,
+        batsmen: [...sim.innings1.batsmen, ...sim.innings2.batsmen],
+        bowlers: [...sim.innings1.bowlers, ...sim.innings2.bowlers],
+        mustWin: !!fixture.isPlayoff,
+      });
     }
   };
 

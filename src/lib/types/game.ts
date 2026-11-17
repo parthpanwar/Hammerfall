@@ -91,6 +91,12 @@ export interface PlayerRatings {
   ratingUpdatedAt?: string;            // ISO 8601 timestamp
   dataSource?: string;                 // Data provenance source
   dataQualityStatus?: 'Verified-BallByBall' | 'Match-Scorecard' | 'Competition-Aggregate' | 'Calibrated-Prior';
+  /** Raw model output before the starting-spread remap (see data/rating-distribution). */
+  modelOverall?: number;
+  /** Overall as shipped in the database, before the starting-spread remap. */
+  preRemapOverall?: number;
+  /** RATING_REMAP_VERSION applied to this player (absent = never remapped). */
+  remapVersion?: number;
 }
 
 export interface PlayerStats {
@@ -134,6 +140,23 @@ export interface PlayerDevelopment {
   note: string;
   /** Earned a first India cap on the back of the season. */
   callUp?: boolean;
+  /** IPL matches and output index (seasonPerformance) behind this verdict; null = too little cricket. */
+  matches?: number;
+  perf?: number | null;
+}
+
+/** Hidden development profile: why two similar prospects turn out differently. Never shown in the UI. */
+export type DevProfile = 'EarlyBloomer' | 'Standard' | 'LateBloomer' | 'Plateau';
+
+/** In-season selection state; reset every off-season. */
+export interface SeasonForm {
+  season: number;
+  /** Matches played this season. */
+  matches: number;
+  /** Bitmask of the team's last 5 matches (bit 0 = most recent): 1 = played. */
+  apps: number;
+  /** Picked by the CPU blooding rule at least once this season. */
+  blooded?: boolean;
 }
 
 /** A CPU front office's auction plan for the coming window; revised after every season. */
@@ -197,6 +220,10 @@ export interface Player {
   ipl?: IplRecord;
   /** Last off-season's development verdict (breakout, bust, domestic breakout, call-up…). */
   development?: PlayerDevelopment;
+  /** Hidden development profile; derived from the id when missing (old saves). */
+  devProfile?: DevProfile;
+  /** In-season form/selection state (recentForm is its moving average). */
+  seasonForm?: SeasonForm;
   recentForm: number; // 0-100
   fitnessLevel: number; // 0-100
   injuryRisk: number; // 0-100
@@ -503,6 +530,8 @@ export interface PlayingXI {
   wicketkeeper: string;
   impactPlayer?: string;
   impactSubstitute?: string;
+  /** CPU only: a prospect picked by the blooding rule for this match. */
+  bloodedId?: string;
 }
 
 export interface GameSettings {

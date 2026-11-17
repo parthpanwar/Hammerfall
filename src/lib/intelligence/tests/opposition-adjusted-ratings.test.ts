@@ -42,7 +42,7 @@ import {
   evaluatePlayerOppositionRatings,
   applyOppositionRatingsToPlayer,
 } from '../ratings/player-rating-orchestrator';
-import { GLOBAL_PLAYERS } from '../../data/players';
+import { GLOBAL_PLAYERS, RAW_GLOBAL_PLAYERS } from '../../data/players';
 import type { Player } from '../../types/game';
 
 function assert(condition: boolean, message: string) {
@@ -188,8 +188,13 @@ export function runOppositionRatingEngineTests() {
   // TEST 8: Full Global Database Audit & Elimination of 90+ Anomalies
   // -------------------------------------------------------------
   console.log('\n--- TEST 8: Audit of 90+ Rated Players in Global Database ---');
-  const ninetyPlusPlayers = GLOBAL_PLAYERS.filter((p) => p.ratings.overall >= 90);
+  // The model audit runs on the shipped ratings; the game's starting-spread remap
+  // (data/rating-distribution.ts) lifts a few 88–89s into the 90s on purpose.
+  const ninetyPlusPlayers = RAW_GLOBAL_PLAYERS.filter((p) => p.ratings.overall >= 90);
   assert(ninetyPlusPlayers.length <= 25, `Global database maintains an elite 90+ tier (${ninetyPlusPlayers.length} players, down from 165)`);
+  const remappedElite = GLOBAL_PLAYERS.filter((p) => p.ratings.overall >= 90);
+  assert(remappedElite.length >= 6 && remappedElite.length <= 10, `In-game elite tier stays rare after the remap (${remappedElite.length} at 90+)`);
+  assert(remappedElite.every((p) => (p.ratings.preRemapOverall ?? p.ratings.overall) >= 88), 'Only 88+ model ratings are lifted into the 90s');
 
   for (const p of ninetyPlusPlayers) {
     assert(p.stats.matches >= 60, `Every 90+ player has deep match evidence (${p.name}: ${p.stats.matches} matches)`);

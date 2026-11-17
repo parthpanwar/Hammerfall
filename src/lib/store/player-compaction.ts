@@ -9,10 +9,15 @@
 
 import type { Player } from '@/lib/types/game';
 import type { PersistStorage, StorageValue } from 'zustand/middleware';
-import { GLOBAL_PLAYERS } from '@/lib/data/players';
+import { GLOBAL_PLAYERS, RAW_GLOBAL_PLAYERS } from '@/lib/data/players';
+import { RATING_REMAP_VERSION } from '@/lib/data/rating-distribution';
 
 const BASE = new Map<string, Player>(GLOBAL_PLAYERS.map((p) => [p.id, p]));
+/** Saves written before the rating remap diffed against the shipped data. */
+const RAW_BASE = new Map<string, Player>(RAW_GLOBAL_PLAYERS.map((p) => [p.id, p]));
 const REF_KEY = '__p';
+/** Rating-remap version the reference was written against (absent = pre-remap save). */
+const VER_KEY = '__v';
 
 function isPlayerLike(v: unknown): v is Player {
   return (
@@ -37,7 +42,7 @@ export function compactReplacer(_key: string, value: unknown): unknown {
   if (!isPlayerLike(value)) return value;
   const base = BASE.get(value.id);
   if (!base) return value; // generated/regen players are stored in full
-  const out: Record<string, unknown> = { [REF_KEY]: value.id };
+  const out: Record<string, unknown> = { [REF_KEY]: value.id, [VER_KEY]: RATING_REMAP_VERSION };
   for (const [k, v] of Object.entries(value)) {
     if (k === 'id') continue;
     if (!same(v, (base as unknown as Record<string, unknown>)[k])) out[k] = v;
@@ -50,9 +55,10 @@ export function compactReviver(_key: string, value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const ref = (value as Record<string, unknown>)[REF_KEY];
   if (typeof ref !== 'string') return value;
-  const base = BASE.get(ref);
-  const { [REF_KEY]: _omit, ...diff } = value as Record<string, unknown>;
+  const { [REF_KEY]: _omit, [VER_KEY]: ver, ...diff } = value as Record<string, unknown>;
   void _omit;
+  // Old saves keep the ratings they were made with: never remap a save twice (or half of it).
+  const base = ver === RATING_REMAP_VERSION ? BASE.get(ref) : RAW_BASE.get(ref);
   if (!base) return { id: ref, ...diff };
   // Fresh copies so engine mutations never touch the bundled database.
   return {

@@ -4,13 +4,50 @@
 // with bounded yearly changes and role-sensitive aging.
 // ============================================================
 
-import type { DevelopmentTrend, Player, PlayerSeasonStats } from '@/lib/types/game';
-import type { PlayerProgressionDelta, PlayerCareerRecord } from '@/lib/types/career';
+import type { DevelopmentTrend, DevProfile, Player, PlayerSeasonStats } from '@/lib/types/game';
+import type { PlayerProgressionDelta } from '@/lib/types/career';
 import { calculateAgeTrajectory } from '@/lib/intelligence/models/age-curve';
+import { PROGRESSION_TUNING, lookup } from './progression-tuning';
+import { devProfileOf, playerRng } from './dev-rng';
+
+const T = PROGRESSION_TUNING;
+const r1 = (rng: () => number, [lo, hi]: [number, number]) => lo + Math.round(rng() * (hi - lo));
+
+/** Development multiplier from the hidden profile at this age. */
+function profileMultiplier(profile: DevProfile, age: number): number {
+  const d = T.devProfile;
+  if (profile === 'EarlyBloomer') return age <= 22 ? d.EarlyBloomer.young : age > 24 ? d.EarlyBloomer.old : 1;
+  if (profile === 'LateBloomer') return age <= 22 ? d.LateBloomer.young : age >= 24 && age <= 28 ? d.LateBloomer.late : 1;
+  if (profile === 'Plateau') return d.Plateau.all;
+  return 1;
+}
+
+/**
+ * Elite compression: each raw point gained above 84 counts 0.6, above 88 counts
+ * 0.4, above 91 counts 0.25. A 74 jumps to 82 easily; an 88 needs an outstanding
+ * season to reach 90. Losses are not compressed.
+ */
+export function applyGain(previous: number, change: number, rng?: () => number): number {
+  if (change <= 0) return previous + change;
+  let level = previous;
+  let remaining = change;
+  while (remaining > 1e-9) {
+    const step = Math.min(1, remaining);
+    const w = lookup(T.compression, (c) => level >= c.above, { above: 0, weight: 1 }).weight;
+    level += step * w;
+    remaining -= step;
+  }
+  // Fractions round up with their own probability (seeded), so the compression
+  // holds on average: a +1 at 84 is a 60% chance of 85, not a certainty.
+  const base = Math.floor(level + 1e-9);
+  const frac = level - base;
+  return frac < 1e-9 ? base : base + ((rng ? rng() : 0.5) < frac ? 1 : 0);
+}
 
 /**
  * Calculates attribute evolution for a player transitioning to the next season.
- * Enforces strict boundaries to prevent unrealistic single-season spikes or collapses.
+ * Young players close a share of their headroom that grows with game time and
+ * output; primes hold; veterans decline, faster when they stop producing.
  */
 export function progressPlayerAttributes(
   player: Player,
@@ -25,101 +62,128 @@ export function progressPlayerAttributes(
   const previousConsistency = player.ratings.consistency || 65;
   const potential = player.ratings.potential;
 
-  // 1. Advance Age
-  const newAge = player.age + 1;
+  const age = player.age; // the age he played the season at
+  const newAge = age + 1;
+  const trajectory = calculateAgeTrajectory(player, player.recentForm || 75);
 
-  // 2. Obtain role-sensitive age trajectory & phase
-  const recentForm = player.recentForm || 75;
-  const trajectory = calculateAgeTrajectory(player, recentForm);
-
-  // 3. Season output and game time.
   const rng = playerRng(player.id, seasonYear, seed);
-  const luck = rng() * 2 - 1; // development luck: coaching, fitness, role, confidence
+  const luck = rng() * 2 - 1; // coaching, fitness, role, confidence
   const perf = seasonPerformance(player, recentSeasonStats);
   const matches = recentSeasonStats?.matches ?? 0;
-  const gameTime = matches >= 10 ? 0.6 : matches >= 5 ? 0.25 : matches > 0 ? -0.2 : newAge <= 23 ? -0.6 : -0.3;
-  const headroom = Math.max(0, potential - previousOverall);
   const p0 = perf ?? 0;
+  const headroom = Math.max(0, potential - previousOverall);
+  const profile = devProfileOf(player);
+  const prevMatches = player.development?.matches; // undefined = unknown (season 1 / old save)
+  const indianCapped = player.nationality === 'Indian' && player.status === 'Capped';
 
-  // 4. Growth / decline, and a potential that moves with the evidence.
-  let overallChange = 0;
+  let change = 0;
   let potentialChange = 0;
   let bust = false;
   let note = 'Stable performance in prime';
+  const growthPath = age <= 24 || (age <= 28 && headroom >= 3);
 
-  if (trajectory.careerPhase === 'Emerging') {
-    overallChange = headroom * (0.2 + 0.08 * luck) + p0 * 2 + gameTime;
-    overallChange = Math.round(Math.max(matches === 0 && headroom > 0 ? 0 : -1, Math.min(7, overallChange)));
-    if (p0 >= 0.5) potentialChange = Math.round(1 + p0 * 3);
-    else if (p0 <= -0.4 && matches >= 6) potentialChange = -2 - Math.round(rng() * 2);
-    else if (matches === 0 && luck < -0.5) potentialChange = -2 - Math.round(rng() * 2);
-    else if (luck > 0.85) potentialChange = 1 + Math.round(rng() * 2);
-    // Some prospects simply never kick on.
-    if (luck < -0.8 && newAge >= 19 && p0 < 0.4) {
-      bust = true;
-      potentialChange = Math.min(potentialChange, -3 - Math.round(rng() * 3));
-      overallChange = Math.min(overallChange, 0);
+  if (growthPath) {
+    // ---- Growth: close a share of the headroom ----
+    const ageRate = lookup(T.ageRate, (r) => age <= r.maxAge, { maxAge: 99, rate: 0 }).rate;
+    const playMult = lookup(T.playMult, (r) => matches >= r.minMatches, { minMatches: 0, mult: 0.35 }).mult;
+    const perfBonus = perf === null ? 0 : lookup(T.perfBonus, (r) => perf >= r.minPerf, T.perfBonus[T.perfBonus.length - 1]).bonus;
+    const raw = headroom * ageRate * playMult * profileMultiplier(profile, age) + perfBonus + luck * T.luck;
+    let [lo, hi] = age <= 24 ? T.clampYoung : age <= 27 ? T.clampMid : T.clamp28;
+    const leap = T.breakoutLeap;
+    if (matches >= leap.minMatches && perf !== null && perf >= leap.minPerf && age <= leap.maxAge) hi = Math.max(hi, leap.maxGain);
+    if (matches === 0) [lo, hi] = age >= 25 ? T.noMatchGainOlder : headroom > 0 ? T.noMatchGain : [-1, 1];
+    change = Math.round(clamp(raw, lo, hi));
+    if (age > 24 && matches < 4) change = Math.min(change, T.benchCapOlder);
+
+    // ---- Potential moves with the evidence ----
+    const P = T.potential;
+    if (perf !== null && matches >= P.strong.minMatches && perf >= P.strong.minPerf && age <= P.strong.maxAge) {
+      const t = clamp((perf - P.strong.minPerf) / 0.6 + luck * 0.25, 0, 1);
+      potentialChange = Math.round(P.strong.gain[0] + t * (P.strong.gain[1] - P.strong.gain[0]));
+    } else if (perf !== null && perf >= P.good.minPerf) {
+      potentialChange = r1(rng, P.good.gain);
+    } else if (perf !== null && perf <= P.poor.maxPerf && matches >= P.poor.minMatches) {
+      potentialChange = -r1(rng, P.poor.loss);
+    } else if (matches === 0 && (age >= P.noMatches.minAge || prevMatches === 0)) {
+      potentialChange = -r1(rng, P.noMatches.loss);
     }
-    note = 'Young talent developing';
-  } else if (trajectory.careerPhase === 'EarlyPrime') {
-    // Good players with headroom keep climbing in their mid-twenties.
-    overallChange = headroom * (0.28 + 0.08 * luck) + p0 * 1.4 + gameTime * 0.7;
-    overallChange = Math.round(Math.max(-2, Math.min(5, overallChange)));
-    if (p0 >= 0.55) potentialChange = 1 + Math.round(p0 + rng());
-    else if (p0 <= -0.4 && matches >= 6) potentialChange = -2;
-    else if (matches === 0 && luck < -0.4 && headroom >= 3) potentialChange = -2;
-    note = 'Entering prime career years';
-  } else if (trajectory.careerPhase === 'PeakPrime') {
-    overallChange = p0 * 1.3 + (player.fitnessLevel >= 80 ? 0.3 : -0.3) + luck * 0.6;
-    overallChange = Math.round(Math.max(-3, Math.min(3, overallChange)));
-    note = 'Consistent peak prime output';
-  } else if (trajectory.careerPhase === 'LatePrime') {
-    overallChange = -1 + Math.round(p0 * 0.8 + luck * 0.4);
-    overallChange = Math.max(-3, Math.min(1, overallChange));
-    note = 'Experienced veteran maintaining quality';
-  } else {
+    if (profile === 'Plateau' && age >= 22 && p0 < 0.6) potentialChange -= 1;
+
+    // Some prospects simply never kick on.
+    if (age >= 19 && headroom >= 4 && p0 < 0.4 && rng() < T.bust.chance) {
+      bust = true;
+      change = Math.min(change, Math.round(rng()));
+      potentialChange = Math.min(potentialChange, -r1(rng, T.bust.potLoss));
+    }
+    note = age <= 23 ? 'Young talent developing' : 'Entering prime career years';
+  } else if (trajectory.careerPhase === 'VeteranMaster') {
     if (trajectory.isOver35Exempt) {
-      overallChange = Math.round(p0 * 0.6 - 0.5);
-      overallChange = Math.max(-2, Math.min(1, overallChange));
+      change = clamp(Math.round(p0 * 0.6 - 0.5), -2, 1);
       note = 'Master veteran defying age curve';
     } else {
       const fitnessDefense = (player.fitnessLevel - 70) * 0.03;
-      overallChange = Math.round(-2.5 + fitnessDefense + p0 * 0.5);
-      overallChange = Math.max(-5, Math.min(0, overallChange));
+      change = clamp(Math.round(-2.5 + fitnessDefense + p0 * 0.5), -5, 0);
       note = 'Natural veteran physical decline';
     }
+  } else {
+    const L = T.late;
+    const fading = indianCapped && age >= 30 && (perf === null || perf < L.midPerf || matches < L.minMatches);
+    if (fading) {
+      // Out of the India side and out of the XI: the selectors move on.
+      change = -r1(rng, L.midLoss);
+      note = 'Passed over: no longer a first-choice pick';
+    } else if (trajectory.careerPhase === 'LatePrime' || age >= L.fromAge) {
+      change = p0 >= L.provenPerf ? (luck > 0 ? 0 : -1) : clamp(Math.round(-L.baseLoss + p0 * 0.8 + luck * L.luck), -3, 1);
+      note = 'Experienced veteran maintaining quality';
+    } else {
+      // Peak prime (or a young player already at his ceiling): roughly flat.
+      change = Math.round(clamp(p0 * T.peak.perfWeight + (player.fitnessLevel >= 80 ? T.peak.fitBias : T.peak.unfitBias) + luck * T.peak.luck, T.peak.clamp[0], T.peak.clamp[1]));
+      note = 'Consistent peak prime output';
+    }
+    if (matches < 4) change = Math.min(change, T.benchCapOlder);
+    if (matches === 0 && !trajectory.isOver35Exempt) change = Math.min(change, luck > 0.5 ? 0 : -(age >= 30 ? T.idleVeteranLoss30 : T.idleVeteranLoss));
   }
 
-  // Without IPL cricket to show for it, growth is steadier (nobody sees a leap).
-  if (matches < 4) overallChange = Math.min(overallChange, 3);
+  change = clamp(change, -5, 10);
+  const newOverall = clamp(applyGain(previousOverall, change, rng), 50, 99);
+  const d = newOverall - previousOverall;
 
-  // Strict clamp on overallChange: [-5, +6]
-  overallChange = Math.max(-5, Math.min(6, overallChange));
+  // Components move by role; overall stays the source of truth.
+  const batPrimary = player.role === 'Batter' || player.role === 'Wicketkeeper' || (player.role === 'All-Rounder' && previousBatting >= previousBowling);
+  let batD = 0;
+  let bowlD = 0;
+  if (player.role === 'Batter' || player.role === 'Wicketkeeper') batD = d;
+  else if (player.role === 'Bowler') bowlD = d;
+  else if (batPrimary) [batD, bowlD] = [d, Math.round(d * 0.5)];
+  else [batD, bowlD] = [Math.round(d * 0.5), d];
+  const pwrD = player.role === 'Bowler' ? 0 : batPrimary ? (d < 0 ? d - 1 : d) : Math.round(d * 0.5);
+  const newBatting = clamp(previousBatting + batD, 15, 99);
+  const newBowling = clamp(previousBowling + bowlD, 10, 99);
+  const newPwr = clamp(previousPwr + pwrD, 30, 99);
+  const newConsistency = clamp(previousConsistency + (newAge >= 26 ? 1 : 0), 40, 99);
 
-  const newOverall = Math.max(50, Math.min(99, previousOverall + overallChange));
-  const newBatting = Math.max(30, Math.min(99, previousBatting + overallChange));
-  const newBowling = Math.max(20, Math.min(99, previousBowling + (player.role === 'Bowler' || player.role === 'All-Rounder' ? overallChange : 0)));
-  const newPwr = Math.max(30, Math.min(99, previousPwr + (overallChange < 0 ? overallChange - 1 : overallChange)));
-  const newConsistency = Math.max(40, Math.min(99, previousConsistency + (newAge >= 26 ? 1 : 0)));
-
-  // Potential moves with the evidence, and narrows with age.
-  let newPotential = potential + potentialChange - (newAge >= 29 ? 1 : 0);
-  newPotential = Math.max(newOverall + (newAge <= 25 ? 1 : 0), Math.min(99, newPotential));
+  // Potential: moves with the evidence, keeps an age-appropriate gap, narrows from 29.
+  const P = T.potential;
+  let newPotential = potential + potentialChange - (newAge >= P.convergeFromAge ? 1 : 0);
+  const floor = lookup(P.floorByAge, (r) => newAge <= r.maxAge, { maxAge: 99, floor: 0 }).floor;
+  newPotential = Math.max(newOverall, Math.min(P.cap, Math.max(newOverall + floor, newPotential)));
   const potentialDelta = newPotential - potential;
+
   const trend: DevelopmentTrend = bust
     ? 'Bust'
-    : matches >= 6 && newAge <= 28 && overallChange >= 2 && (p0 >= 0.55 || potentialDelta >= 3)
+    : matches >= T.breakoutTag.minMatches &&
+      newAge <= T.breakoutTag.maxNewAge &&
+      ((d >= T.breakoutTag.bigGain && p0 >= T.breakoutTag.bigGainMinPerf) || (d >= T.breakoutTag.gain && (p0 >= T.breakoutTag.minPerf || potentialDelta >= T.breakoutTag.potGain)))
     ? 'Breakout'
-    : overallChange >= 2
+    : d >= 2
     ? 'Rising'
-    : overallChange <= -2 && newAge >= 30
+    : d <= -2 && newAge >= 30
     ? 'Declining'
-    : newAge <= 25 && overallChange <= 0 && potentialDelta < 0
+    : newAge <= 25 && d <= 0 && potentialDelta < 0
     ? 'Stalled'
     : 'Steady';
   note = developmentNote(trend, player, recentSeasonStats, note);
 
-  // New market value estimate based on new overall and age
   const estimatedMarketValue = Math.round(
     Math.max(20, (newOverall - 55) * (newOverall - 55) * (newAge <= 27 ? 1.4 : newAge <= 33 ? 1.0 : 0.7))
   );
@@ -127,6 +191,7 @@ export function progressPlayerAttributes(
   const updatedPlayer: Player = {
     ...player,
     age: newAge,
+    devProfile: profile,
     ratings: {
       ...player.ratings,
       overall: newOverall,
@@ -138,7 +203,8 @@ export function progressPlayerAttributes(
     },
     estimatedMarketValue,
     recentForm: 75, // Reset to standard pre-season baseline
-    development: { season: seasonYear, trend, overallDelta: newOverall - previousOverall, potentialDelta, note },
+    seasonForm: undefined,
+    development: { season: seasonYear, trend, overallDelta: d, potentialDelta, note, matches, perf },
   };
 
   const delta: PlayerProgressionDelta = {
@@ -147,7 +213,7 @@ export function progressPlayerAttributes(
     age: newAge,
     previousOverall,
     newOverall,
-    overallDelta: newOverall - previousOverall,
+    overallDelta: d,
     previousBatting,
     newBatting,
     previousBowling,
@@ -189,27 +255,6 @@ export function progressAllPlayers(
 
 // ------------------------------------------------------------------ helpers
 
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-/** Deterministic per-player, per-season random stream (mulberry32). */
-function playerRng(id: string, season: number, seed: number): () => number {
-  let a = (hashString(id) ^ Math.imul(season, 2654435761) ^ seed) >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /** Season output against an IPL-average baseline: −1 (poor) … +1.5 (outstanding); null = too little cricket. */
@@ -238,9 +283,11 @@ function developmentNote(trend: DevelopmentTrend, p: Player, s: PlayerSeasonStat
     : '';
   switch (trend) {
     case 'Breakout':
-      return line ? `Breakout season (${line}) — ceiling raised` : 'Big leap in the nets — ceiling raised';
+      if (p.seasonForm?.blooded && line) return `Earned a place in the XI mid-season and kept it (${line}): ceiling raised`;
+      return line ? `Breakout season (${line}): ceiling raised` : 'Big leap in the nets: ceiling raised';
     case 'Rising':
-      return line ? `Kept improving (${line})` : 'Kept improving';
+      if (p.seasonForm?.blooded && line) return `Earned a place in the XI after a mid-season debut (${line})`;
+      return line ? `Kept improving (${line})` : s && s.matches === 0 ? 'Kept improving in the nets and domestic cricket' : 'Kept improving';
     case 'Bust':
       return 'Development has stalled — scouts have lowered his ceiling';
     case 'Stalled':
@@ -252,7 +299,7 @@ function developmentNote(trend: DevelopmentTrend, p: Player, s: PlayerSeasonStat
   }
 }
 
-const DOMESTIC_LINES: Record<Player['role'], (r: () => number) => string> = {
+export const DOMESTIC_LINES: Record<Player['role'], (r: () => number) => string> = {
   Batter: (r) => `Domestic breakout: ${380 + Math.round(r() * 160)} runs at SR ${155 + Math.round(r() * 30)} in the Syed Mushtaq Ali Trophy`,
   Wicketkeeper: (r) => `Domestic breakout: keeper-bat with ${340 + Math.round(r() * 150)} SMAT runs at SR ${150 + Math.round(r() * 30)}`,
   Bowler: (r) => `Domestic breakout: ${16 + Math.round(r() * 8)} SMAT wickets at an economy of ${(6.4 + r() * 1.2).toFixed(1)}`,
@@ -271,37 +318,44 @@ function applyDomesticBreakouts(
   season: number,
   seed: number
 ) {
+  const D = T.domestic;
   const rolls: { i: number; roll: number }[] = [];
   players.forEach((p, i) => {
     if (p.nationality !== 'Indian' || p.status !== 'Uncapped' || p.isRetired) return;
-    if (p.age < 19 || p.age > 27) return;
+    // p.age is already next season's age here; the domestic season was played a year younger.
+    const age = p.age - 1;
+    const maxAge = devProfileOf(p) === 'LateBloomer' ? D.lateBloomerMaxAge : D.maxAge;
+    if (age < D.minAge || age > maxAge) return;
     if ((stats[p.id]?.matches ?? 0) >= 4) return; // regular IPL players are judged on IPL output
+    if (p.ratings.overall >= D.ovrCap) return;
     const r = playerRng(p.id, season, seed + 7);
     const head = p.ratings.potential - p.ratings.overall;
-    const chance = 0.035 + (head >= 8 ? 0.03 : 0) + (p.age <= 23 ? 0.015 : 0);
+    const chance = D.baseChance + (head >= 8 ? D.headroomBonus : 0) + (age <= 23 ? D.youthBonus : 0);
     const roll = r();
     if (roll < chance) rolls.push({ i, roll: roll / chance });
   });
   rolls.sort((a, b) => a.roll - b.roll);
-  for (const { i } of rolls.slice(0, 8)) {
+  for (const { i } of rolls.slice(0, D.cap)) {
     const p = players[i];
     const r = playerRng(p.id, season, seed + 11);
-    const jump = Math.round(4 + r() * 4 + Math.max(0, 66 - p.ratings.overall) * 0.25);
-    const overall = Math.min(86, p.ratings.overall + jump);
-    const potential = Math.min(95, Math.max(overall + 3, p.ratings.potential + 2 + Math.round(r() * 3)));
+    // Bigger jumps from lower down: a 64 can become a 73, a 78 becomes an 83.
+    const jump = clamp(Math.round(D.jump[0] + r() * 3 + Math.max(0, 72 - p.ratings.overall) * 0.35), D.jump[0], D.jump[1]);
+    const overall = Math.min(D.ovrCap, p.ratings.overall + jump);
+    const potential = Math.min(T.potential.cap, Math.max(overall + 3, p.ratings.potential + r1(r, D.potGain)));
     const d = overall - p.ratings.overall;
     const note = DOMESTIC_LINES[p.role](r);
+    const batPrimary = p.role !== 'Bowler' && (p.role !== 'All-Rounder' || p.ratings.batting >= p.ratings.bowling);
     players[i] = {
       ...p,
       ratings: {
         ...p.ratings,
         overall,
         potential,
-        batting: p.role === 'Bowler' ? p.ratings.batting : Math.min(99, p.ratings.batting + d),
-        bowling: p.role === 'Bowler' || p.role === 'All-Rounder' ? Math.min(99, p.ratings.bowling + d) : p.ratings.bowling,
+        batting: batPrimary ? Math.min(99, p.ratings.batting + d) : p.role === 'All-Rounder' ? Math.min(99, p.ratings.batting + Math.round(d / 2)) : p.ratings.batting,
+        bowling: p.role === 'Bowler' || (p.role === 'All-Rounder' && !batPrimary) ? Math.min(99, p.ratings.bowling + d) : p.role === 'All-Rounder' ? Math.min(99, p.ratings.bowling + Math.round(d / 2)) : p.ratings.bowling,
         consistency: Math.min(99, (p.ratings.consistency || 60) + 2),
       },
-      development: { season, trend: 'Domestic breakout', overallDelta: (p.development?.overallDelta ?? 0) + d, potentialDelta: potential - p.ratings.potential, note },
+      development: { ...(p.development ?? { matches: 0, perf: null }), season, trend: 'Domestic breakout', overallDelta: (p.development?.overallDelta ?? 0) + d, potentialDelta: potential - p.ratings.potential + (p.development?.potentialDelta ?? 0), note },
     };
     const k = deltas.findIndex((x) => x.playerId === p.id);
     if (k >= 0) {

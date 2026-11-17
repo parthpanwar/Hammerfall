@@ -38,6 +38,7 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
     playingXIs,
     humanFranchiseId,
     updatePlayerSeasonStats,
+    recordMatchForm,
   } = useGameStore();
 
   const team1 = franchises.find((f) => f.id === fixture.team1Id);
@@ -129,6 +130,16 @@ export function MatchSimulator({ fixture, onMatchComplete }: MatchSimulatorProps
       }
     }
     for (const id of appeared) if (!counted.has(id)) updatePlayerSeasonStats(id, { matches: appearance(id) });
+    recordMatchForm({
+      matchKey: fixture.id,
+      team1Id: finalSession.team1XI.franchiseId,
+      team2Id: finalSession.team2XI.franchiseId,
+      team1XI: finalSession.team1XI.players,
+      team2XI: finalSession.team2XI.players,
+      batsmen: allBatsmen,
+      bowlers: allBowlers,
+      mustWin: !!fixture.isPlayoff,
+    });
 
     onMatchComplete(finalSession.result);
   };

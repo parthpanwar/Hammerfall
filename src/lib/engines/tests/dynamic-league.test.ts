@@ -38,7 +38,8 @@ assert(selectionScore(vaibhav) > selectionScore(warner), `Suryavanshi (${selecti
 const rr = squad('rr');
 const rrWithWarner = { ...rr, players: [...rr.players, warner] };
 assert(bestXi(rrWithWarner.players).some((p) => p.id === vaibhav.id), 'RR still play Suryavanshi if they sign Warner');
-assert(xiGain(rr, warner) < 4, `Warner is at best a marginal upgrade on RR's weakest overseas starter (gain ${xiGain(rr, warner)})`);
+// (< 5: the starting-spread remap moved RR's weakest overseas starter, Pretorius, from 73 to 71.)
+assert(xiGain(rr, warner) < 5, `Warner is at best a marginal upgrade on RR's weakest overseas starter (gain ${xiGain(rr, warner)})`);
 
 console.log('\n=== 2. Overseas slots are for starters ===');
 const rcb = squad('rcb');
@@ -102,7 +103,7 @@ const trend = (t: string) => updatedPlayers.filter((p) => p.development?.trend =
 assert(trend('Breakout').length >= 5, `a season produces breakouts (${trend('Breakout').length})`);
 assert(trend('Bust').length >= 1, `and some prospects bust (${trend('Bust').length})`);
 const domestic = trend('Domestic breakout');
-assert(domestic.length >= 1 && domestic.length <= 8, `a handful of domestic breakouts emerge (${domestic.map((p) => p.name).join(', ')})`);
+assert(domestic.length >= 8 && domestic.length <= 15, `8–15 domestic breakouts emerge (${domestic.map((p) => p.name).join(', ')})`);
 assert(domestic.every((p) => p.status === 'Uncapped' && p.nationality === 'Indian'), 'domestic breakouts are uncapped Indians');
 const callUps = updatedPlayers.filter((p) => p.development?.callUp);
 assert(callUps.length >= 1 && callUps.length <= 5, `India call up the season's best uncapped performers (${callUps.map((p) => p.name).join(', ')})`);

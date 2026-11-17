@@ -28,7 +28,7 @@ import type { RegisteredPlayer, RegistrationSummary } from '@/lib/types/registra
 import type { FranchiseShortlist, ShortlistPriority } from '@/lib/types/scouting';
 import type { SquadRules } from '@/lib/types/squad-rules';
 import { OFFICIAL_IPL_SQUAD_RULES } from '@/lib/types/squad-rules';
-import { generateAuctionRegistrationPool } from '@/lib/engines/registration/registration-engine';
+import { generateAuctionRegistrationPool, isFreshDomesticBreakout, isWorthRegistering } from '@/lib/engines/registration/registration-engine';
 import { generateAllFranchiseShortlists } from '@/lib/engines/scouting/cpu-shortlist-generator';
 import { compileFinalAuctionPool } from '@/lib/engines/auction/shortlist-compiler';
 import { checkAndEnsureAuctionPoolFeasibility } from '@/lib/engines/auction/feasibility-checker';
@@ -46,6 +46,23 @@ import { advanceTradeMarket, executeTrade, rollTradeSeason, type TradeWorld } fr
 import { saveCareerToSlot, loadCareerFromSlot } from '@/lib/engines/career/save-manager';
 import { finalizeAuction, countOverseas } from '@/lib/engines/auction/auction-runner';
 import { createCompactStorage } from './player-compaction';
+import { applyMatchToPlayer, linesFromInnings } from '@/lib/engines/season-form';
+import { selectCpuXI } from '@/lib/engines/squad-engine';
+import { hashString, mulberry32 } from '@/lib/engines/career/dev-rng';
+
+/** One finished match, as recordMatchForm needs it. */
+export interface MatchFormInput {
+  /** Stable per-match key (fixture id) for the seeded blooding roll. */
+  matchKey: string;
+  team1Id: string;
+  team2Id: string;
+  team1XI: string[];
+  team2XI: string[];
+  batsmen: { playerId: string; runs: number; balls: number }[];
+  bowlers: { playerId: string; wickets: number; overs: number; runs: number }[];
+  /** Playoff / must-win: the CPU fields its strongest XI. */
+  mustWin?: boolean;
+}
 
 /** Phases that belong to an in-progress career (used by Continue). */
 /** Steps of the season flow. Side pages (Franchise Office, Points table, Trades) are
@@ -210,6 +227,11 @@ interface GameStore extends GameState {
 
   // Season Stats
   updatePlayerSeasonStats: (playerId: string, stats: Partial<PlayerSeasonStats>) => void;
+  /**
+   * After a match: fold each player's numbers into recentForm, log appearances for
+   * both squads, and re-pick the CPU sides' XIs (form + blooding) for their next game.
+   */
+  recordMatchForm: (match: MatchFormInput) => void;
   initializePlayerSeasonStats: (players: Player[]) => void;
 
   // Awards
@@ -694,14 +716,18 @@ export const useGameStore = create<GameStore>()(
             (state.careerState.transactions || []).filter((t) => t.season === state.currentSeason && t.type === 'Released').map((t) => t.playerId)
           );
           const isNew = (id: string) => id.startsWith(`gen_${state.currentSeason}_`);
+          // Domestic breakouts always register: they are the off-season's story.
+          const breakout = (p: Player) => isFreshDomesticBreakout(p, state.currentSeason) && p.nationality === 'Indian';
           // Realistic demand: teams top up to ~21, not to the 25 cap.
           const need = state.franchises.reduce((t, f) => t + Math.max(0, 21 - f.players.length), 0);
           const target = Math.max(90, Math.min(140, Math.round(need * 2.2)));
-          const core = registeredPlayers.filter((p) => releasedNow.has(p.id) || isNew(p.id));
+          const core = registeredPlayers.filter((p) => releasedNow.has(p.id) || isNew(p.id) || breakout(p));
           // Scouts register more than the highest overalls: about a quarter of the open
           // spots go to prospects — young uncapped Indians with upside and anyone coming
           // off a breakout domestic season (the next Shashank or Ashutosh).
-          const others = registeredPlayers.filter((p) => !releasedNow.has(p.id) && !isNew(p.id));
+          const others = registeredPlayers.filter(
+            (p) => !releasedNow.has(p.id) && !isNew(p.id) && !breakout(p) && isWorthRegistering(p, state.currentSeason)
+          );
           const open = Math.max(0, target - core.length);
           const isProspect = (p: Player) =>
             p.nationality === 'Indian' &&
@@ -1030,6 +1056,34 @@ export const useGameStore = create<GameStore>()(
             economyRate: oversBowled ? runsConceded / oversBowled : 0,
           };
           return { playerSeasonStats: { ...state.playerSeasonStats, [playerId]: next }, updatedAt: Date.now() };
+        }),
+
+      recordMatchForm: (m) =>
+        set((state) => {
+          const season = state.currentSeason;
+          const lines = linesFromInnings(m.batsmen, m.bowlers);
+          const played = new Set([...m.team1XI, ...m.team2XI]);
+          const blooded = new Set(
+            [state.playingXIs[m.team1Id]?.bloodedId, state.playingXIs[m.team2Id]?.bloodedId].filter(
+              (id): id is string => !!id && played.has(id)
+            )
+          );
+          const updated = new Map<string, Player>();
+          const teams = state.franchises.filter((f) => f.id === m.team1Id || f.id === m.team2Id);
+          for (const f of teams) {
+            for (const p of f.players) updated.set(p.id, applyMatchToPlayer(p, season, played.has(p.id), lines.get(p.id), blooded.has(p.id)));
+          }
+          const franchises = state.franchises.map((f) =>
+            f.id === m.team1Id || f.id === m.team2Id ? { ...f, players: f.players.map((p) => updated.get(p.id) ?? p) } : f
+          );
+          const allPlayers = state.allPlayers.map((p) => updated.get(p.id) ?? p);
+          const playingXIs = { ...state.playingXIs };
+          for (const f of franchises) {
+            if ((f.id !== m.team1Id && f.id !== m.team2Id) || f.id === state.humanFranchiseId) continue;
+            const rng = mulberry32((hashString(`${m.matchKey}:${f.id}`) ^ (state.settings.seed ?? 0)) >>> 0);
+            playingXIs[f.id] = selectCpuXI(f, { rng, season, mustWin: m.mustWin });
+          }
+          return { franchises, allPlayers, playingXIs, updatedAt: Date.now() };
         }),
 
       initializePlayerSeasonStats: (players) =>

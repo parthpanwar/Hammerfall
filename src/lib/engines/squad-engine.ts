@@ -5,6 +5,8 @@
 
 import type { Franchise, Player, PlayingXI } from '@/lib/types/game';
 import { selectionScore } from './selection-score';
+import { recentApps } from './season-form';
+import { PROGRESSION_TUNING } from './career/progression-tuning';
 
 export interface SquadValidationResult {
   valid: boolean;
@@ -218,3 +220,57 @@ export function generateBestPlayingXI(franchise: Franchise): PlayingXI {
   };
 }
 
+
+// ------------------------------------------------------------------ CPU blooding
+
+type RoleGroup = 'bat' | 'ar' | 'pace' | 'spin';
+const roleGroup = (p: Player): RoleGroup =>
+  p.role === 'Batter' || p.role === 'Wicketkeeper' ? 'bat' : p.role === 'All-Rounder' ? 'ar' : p.isSpinner ? 'spin' : 'pace';
+
+export interface CpuXiOptions {
+  /** Seeded stream (never Math.random) so careers stay deterministic. */
+  rng: () => number;
+  season: number;
+  /** Playoffs / must-win games: no experiments. */
+  mustWin?: boolean;
+}
+
+/**
+ * The CPU's XI for the next match: the best XI, plus the blooding rule. An
+ * uncapped Indian with POT ≥ 84 who has played fewer than 3 of the last 5 games
+ * gets, with probability 0.35, the slot of the weakest Indian in his role group,
+ * provided he is not far behind him (an 8th-best batter still doesn't open).
+ */
+export function selectCpuXI(franchise: Franchise, opts: CpuXiOptions): PlayingXI {
+  const xi = generateBestPlayingXI(franchise);
+  if (opts.mustWin || xi.players.length < 11) return xi;
+  const F = PROGRESSION_TUNING.form;
+  const inXI = new Set(xi.players);
+  const byId = new Map(franchise.players.map((p) => [p.id, p]));
+  const prospects = franchise.players
+    .filter(
+      (p) =>
+        !inXI.has(p.id) &&
+        p.nationality === 'Indian' &&
+        p.status === 'Uncapped' &&
+        p.ratings.potential >= F.bloodingMinPotential &&
+        recentApps(p, opts.season) < 3
+    )
+    .sort((a, b) => selectionScore(b) - selectionScore(a));
+  for (const pr of prospects) {
+    if (opts.rng() >= F.bloodingChance) continue;
+    const group = roleGroup(pr);
+    const worst = xi.players
+      .map((id) => byId.get(id))
+      .filter((p): p is Player => !!p && p.nationality !== 'Overseas' && p.id !== xi.wicketkeeper && p.id !== xi.captain && roleGroup(p) === group)
+      .sort((a, b) => selectionScore(a) - selectionScore(b))[0];
+    if (!worst || selectionScore(pr) < selectionScore(worst) - F.bloodingMaxGap) continue;
+    return {
+      ...xi,
+      players: xi.players.map((id) => (id === worst.id ? pr.id : id)),
+      impactPlayer: xi.impactPlayer === pr.id ? worst.id : xi.impactPlayer,
+      bloodedId: pr.id,
+    };
+  }
+  return xi;
+}

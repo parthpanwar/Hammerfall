@@ -33,6 +33,24 @@ export function assignOfficialBasePrice(player: Player): BasePriceBracket {
   return 50;
 }
 
+/** Fresh off a breakout domestic season (the off-season before `season`). */
+export function isFreshDomesticBreakout(p: Player, season: number): boolean {
+  return p.development?.trend === 'Domestic breakout' && p.development.season >= season - 1;
+}
+
+/**
+ * Mini auctions (after season 1): an uncapped Indian only registers if somebody
+ * might actually want him — OVR ≥ 66, POT ≥ 78, IPL cricket in the last two
+ * seasons, a new rookie or a domestic breakout. The rest stay in the database.
+ */
+export function isWorthRegistering(p: Player, season: number): boolean {
+  if (p.nationality !== 'Indian' || p.status !== 'Uncapped') return true;
+  if (p.ratings.overall >= 66 || p.ratings.potential >= 78) return true;
+  if ((p.ipl?.lastSeason ?? 0) >= season - 2 && (p.ipl?.matches ?? 0) > 0) return true;
+  if (p.id.startsWith(`gen_${season}_`)) return true;
+  return isFreshDomesticBreakout(p, season);
+}
+
 /**
  * Generates the official pre-auction registration pool from the global player database.
  */

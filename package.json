@@ -11,6 +11,7 @@
     "benchmark:auction": "tsx scripts/run_auction_evaluation.ts",
     "benchmark:dynasty": "tsx scripts/simulate_10_seasons.ts",
     "calibrate:match": "tsx scripts/calibrate_match_engine.ts",
+    "calibrate:progression": "tsx scripts/calibrate_progression.ts",
     "ml:train": "export DYLD_LIBRARY_PATH=/opt/homebrew/opt/libomp/lib:$DYLD_LIBRARY_PATH && ./.venv/bin/python3 scripts/ml/pipeline.py"
   },
   "dependencies": {

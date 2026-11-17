@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
-import { generateBestPlayingXI, validatePlayingXI } from '@/lib/engines/squad-engine';
+import { generateBestPlayingXI, selectCpuXI, validatePlayingXI } from '@/lib/engines/squad-engine';
+import { hashString, mulberry32 } from '@/lib/engines/career/dev-rng';
 import { generateIPLFixtures, initializeStandings } from '@/lib/engines/tournament-engine';
 import { AlertTriangle, ArrowRight, ChevronDown, ChevronUp, Repeat, Wand2 } from 'lucide-react';
 import type { PlayingXI, Player } from '@/lib/types/game';
@@ -87,7 +88,10 @@ export function SquadManager() {
   const handleConfirmAndProceed = () => {
     if (!validation.valid) return;
     for (const f of franchises) {
-      if (f.id !== humanFranchise.id && !playingXIs[f.id]) setPlayingXI(f.id, generateBestPlayingXI(f));
+      if (f.id !== humanFranchise.id && !playingXIs[f.id]) {
+        const rng = mulberry32((hashString(`opening:${f.id}`) ^ (useGameStore.getState().settings.seed ?? 0)) >>> 0);
+        setPlayingXI(f.id, selectCpuXI(f, { rng, season: useGameStore.getState().currentSeason }));
+      }
     }
     if (fixtures.length === 0) {
       setFixtures(generateIPLFixtures(franchises));

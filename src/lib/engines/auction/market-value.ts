@@ -20,6 +20,7 @@
 
 import type { AuctionSession, Franchise, Player } from '@/lib/types/game';
 import { getPlayerAuctionCategory } from './dynamic-set-engine';
+import { PROGRESSION_TUNING } from '../career/progression-tuning';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -102,7 +103,8 @@ export function iplPedigree(p: Player, season: number): Pedigree {
       m = p.age <= 25 ? 1.3 : 1.15;
       tag = 'Domestic breakout';
     } else if (youngUncapped) {
-      m = 1.2;
+      // The upside is already in the rating curve (headroom); this is the scouting buzz.
+      m = PROGRESSION_TUNING.market.prospectPedigree;
       tag = 'Uncapped prospect';
     } else if (p.status === 'Uncapped' && p.age >= 27) {
       m = 0.85; // domestic journeyman the league has already passed over
@@ -151,7 +153,9 @@ export function iplPedigree(p: Player, season: number): Pedigree {
 export function auctionRatingValue(p: Player): number {
   const ovr = p.ratings.overall;
   const headroom = Math.max(0, p.ratings.potential - ovr);
-  const youth = p.age <= 21 ? 0.35 : p.age <= 24 ? 0.25 : p.age <= 27 ? 0.1 : 0;
+  // Headroom counts, but an auction buys this season first: a 17-year-old 75/92 is a
+  // ₹3–6 Cr punt, not a ₹10 Cr one.
+  const youth = PROGRESSION_TUNING.market.youth.find((r) => p.age <= r.maxAge)?.weight ?? 0;
   const decline = p.age >= 37 ? 5 : p.age >= 35 ? 3 : p.age >= 33 ? 1 : 0;
   const eff = ovr + headroom * youth - decline;
   return Math.round(clamp(34 * Math.exp((eff - 64) / 5.6) - 20, 20, 4000));
@@ -165,7 +169,10 @@ export function baseMarketValue(p: Player, season: number): number {
   const hit = baseCache.get(key);
   if (hit !== undefined) return hit;
   const ped = iplPedigree(p, season);
-  const v = Math.max(p.basePrice, Math.round(auctionRatingValue(p) * ped.multiplier));
+  // Last season's IPL breakouts: teams chase the player everyone just watched.
+  // (Domestic breakouts carry their own premium in the pedigree.)
+  const bump = p.development?.trend === 'Breakout' && p.development.season >= season - 1 ? PROGRESSION_TUNING.market.breakoutBump : 1;
+  const v = Math.max(p.basePrice, Math.round(auctionRatingValue(p) * ped.multiplier * bump));
   if (baseCache.size > 20000) baseCache.clear();
   baseCache.set(key, v);
   return v;
@@ -224,18 +231,27 @@ export function sessionPriceIndex(session: AuctionSession): number {
  * What the market will pay for a player in this auction (lakhs). Inflation lands
  * hardest on the best players — that is where surplus money chases in real minis.
  */
+/**
+ * How much of the market's inflation reaches this player. Surplus money chases
+ * proven names; an uncapped kid who has never played an IPL game is a punt that
+ * teams price on talent, not on how much cash is left over.
+ */
+function inflationWeight(p: Player, value: number): number {
+  const w = value >= 400 ? 1 : value >= 150 ? 0.8 : 0.5;
+  const unproven = p.status === 'Uncapped' && !(p.ipl && p.ipl.matches > 0);
+  return unproven ? w * PROGRESSION_TUNING.market.unprovenInflation : w;
+}
+
 export function auctionMarketValue(p: Player, session: Pick<AuctionSession, 'seasonYear' | 'auctionType' | 'id' | 'priceIndex' | 'franchises' | 'playerPool'>): number {
   const base = baseMarketValue(p, session.seasonYear);
   const idx = sessionPriceIndex(session as AuctionSession);
-  const w = base >= 400 ? 1 : base >= 150 ? 0.8 : 0.5;
-  return Math.max(p.basePrice, Math.round((base * Math.pow(idx, w)) / 5) * 5);
+  return Math.max(p.basePrice, Math.round((base * Math.pow(idx, inflationWeight(p, base))) / 5) * 5);
 }
 
 /** What the market thinks he is worth, without the base-price floor (lakhs). */
 export function unflooredMarketValue(p: Player, session: AuctionSession): number {
   const raw = auctionRatingValue(p) * iplPedigree(p, session.seasonYear).multiplier;
-  const w = raw >= 400 ? 1 : raw >= 150 ? 0.8 : 0.5;
-  return Math.round(raw * Math.pow(sessionPriceIndex(session), w));
+  return Math.round(raw * Math.pow(sessionPriceIndex(session), inflationWeight(p, raw)));
 }
 
 /**

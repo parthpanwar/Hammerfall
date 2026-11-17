@@ -21,6 +21,7 @@ import { generatePlayerIntelligenceDossier } from '../../intelligence/valuation/
 import { analyzeUpcomingPool } from '../auction/dynamic-set-engine';
 import { xiGain } from './xi-value';
 import { getActiveGMProfile } from './personalities';
+import { PROGRESSION_TUNING } from '../career/progression-tuning';
 import { auctionMarketValue, iplPedigree, patienceMultiplier, singlePlayerCap, teamWealthFactor } from '../auction/market-value';
 
 /**
@@ -200,6 +201,12 @@ export function calculateAdvancedSpendingLimit(
     compositeValuation = Math.max(player.basePrice, Math.round(depthMax + depthGain * 6));
   }
 
+  // Prospects who have never played the IPL are punts: nobody gets into a cash-pressure
+  // bidding war for an uncapped teenager (wonderkids land ₹1–6 Cr, not ₹15 Cr).
+  if (player.status === 'Uncapped' && !(player.ipl && player.ipl.matches > 0)) {
+    compositeValuation = Math.min(compositeValuation, Math.round(marketVal * PROGRESSION_TUNING.market.prospectBidCeiling));
+  }
+
   // Expert level: don't overbid when comparable options are plentiful
   if (difficulty === 'Expert' && alternatives.count >= 3 && alternatives.averageRating >= ovr - 3) {
     compositeValuation = Math.min(compositeValuation, Math.round(marketVal * 1.05));
@@ -233,6 +240,8 @@ export function strategyFit(franchise: Franchise, player: Player): number {
   const headroom = player.ratings.potential - player.ratings.overall;
   if (player.age <= 24 && headroom >= 5) m *= 1 + traits.youthBias * 0.15;
   else if (player.age >= 32) m *= 1 - traits.youthBias * 0.12;
+  // Youth-first front offices chase the wonderkids and hot prospects.
+  if (player.age <= 22 && player.ratings.potential >= 84 && traits.youthBias > 0) m *= 1 + traits.youthBias * (player.ratings.potential >= 88 ? 0.25 : 0.12);
   return Math.max(0.8, Math.min(1.3, m));
 }
 

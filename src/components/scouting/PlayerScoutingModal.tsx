@@ -1,5 +1,6 @@
 'use client';
 
+import { prospectLabel } from '@/lib/engines/career/prospect-label';
 import React, { useState } from 'react';
 import type { Player, Franchise } from '@/lib/types/game';
 import { FRANCHISES } from '@/lib/data/franchises';
@@ -86,10 +87,20 @@ export function PlayerScoutingModal({
                 <span className="telemetry-badge-sm bg-[var(--m-raised)] text-[var(--m-dim)] border border-[var(--m-line)]">
                   {dossier.ageProfile.careerPhase}
                 </span>
+                {prospectLabel(player) && (
+                  <span className="telemetry-badge-sm bg-[var(--m-gold)]/15 text-[var(--m-gold)] border border-[var(--m-gold)]/30">
+                    {prospectLabel(player)}
+                  </span>
+                )}
               </div>
               <div className="text-xs text-[var(--m-dim)] font-medium mt-0.5">
                 {player.role} • {player.age} yrs • {player.battingHand} Bat • {player.bowlingStyle}
               </div>
+              {player.development?.note && (
+                <div className="text-xs text-[var(--m-dim)] mt-1">
+                  {player.development.trend === 'Steady' ? 'Scouting report' : player.development.trend}: {player.development.note}
+                </div>
+              )}
             </div>
           </div>
 
