@@ -20,7 +20,8 @@ import type { CPUDifficulty, Franchise, Player } from '../../types/game';
 import type { TradeProposal, TradeRules } from '../../types/trade';
 
 // Deterministic career: the store seeds the auction with Math.random, so pin it.
-// Override with TEST_SEED=n to explore other careers.
+// Override with TEST_SEED=n to explore other careers (seeds 1–7 should all see CPU↔CPU
+// trades in TEST 10; TRADE_DEBUG=1 prints them).
 const TEST_SEED = Number(process.env.TEST_SEED || 7);
 {
   const seeded = createSeededRandom(TEST_SEED);
@@ -351,6 +352,11 @@ console.log('\n--- TEST 10: Market ticks, CPU offers, CPU↔CPU trades & money c
     const r = advanceTradeMarket(w, 1000 + i);
     w = r.world;
     cpuTrades += r.cpuTrades.length;
+    if (process.env.TRADE_DEBUG) {
+      for (const rec of r.cpuTrades) {
+        console.log('DEBUG trade', rec.players.map((p) => `${p.playerName}(${p.overall} ${p.role} ₹${p.salaryLakhs}L) ${p.fromFranchiseId}→${p.toFranchiseId}`).join(' | '), rec.cash ? `cash ₹${rec.cash.amountLakhs}L` : '');
+      }
+    }
     offers += r.newOffers.length;
   }
   console.log(`   ↳ 20 market days: ${cpuTrades} CPU↔CPU trades, ${offers} offers to the user`);

@@ -665,10 +665,112 @@ const fills: Record<string, (p: Player) => boolean> = {
   death: (p) => p.isDeathBowler,
 };
 
+// ------------------------------------------------------------
+// Complementary needs: one-player marginal strength
+// ------------------------------------------------------------
+
+interface Marginals {
+  /** Strength (utility points) the franchise loses if this player leaves. */
+  loss: Map<string, number>;
+  /** Strength (utility points) gained by adding an outside player (cached lazily). */
+  gain: (p: Player, owner: string) => number;
+  core: Set<string>;
+}
+
+const marginalCache = new WeakMap<Franchise[], Map<string, Marginals>>();
+
+/**
+ * How much each player matters to his own franchise, and how much an outside
+ * player would add. Efficiently built, full squads have no glaring role gaps,
+ * so mutually good deals are swaps of *depth one side can spare* for *a slot the
+ * other side is thin at* — which only shows up at the margin, not in coverage counts.
+ */
+function marginals(fr: Franchise, ctx: TradeContext): Marginals {
+  let byFr = marginalCache.get(ctx.franchises);
+  if (!byFr) {
+    byFr = new Map();
+    marginalCache.set(ctx.franchises, byFr);
+  }
+  const hit = byFr.get(fr.id);
+  if (hit) return hit;
+  const owners = new Map<string, string>(fr.players.map((p) => [p.id, fr.id]));
+  const val = (p: Player) => teamTradeValue(p, fr.id, ctx.difficulty, contractSalary(p, owners.get(p.id) ?? fr.id, ctx));
+  const base = teamStrength(fr.players, fr.id, ctx.difficulty, val).strength;
+  const loss = new Map(
+    fr.players.map((p) => [p.id, (base - teamStrength(fr.players.filter((x) => x.id !== p.id), fr.id, ctx.difficulty, val).strength) * STRENGTH_TO_POINTS])
+  );
+  const gains = new Map<string, number>();
+  const gain = (p: Player, owner: string) => {
+    let g = gains.get(p.id);
+    if (g === undefined) {
+      owners.set(p.id, owner);
+      g = (teamStrength([...fr.players, p], fr.id, ctx.difficulty, val).strength - base) * STRENGTH_TO_POINTS;
+      gains.set(p.id, g);
+    }
+    return g;
+  };
+  const core = new Set([...fr.players].sort((a, b) => val(b) - val(a)).slice(0, 3).map((p) => p.id));
+  const m = { loss, gain, core };
+  byFr.set(fr.id, m);
+  return m;
+}
+
+/**
+ * Player-for-player packages where each side gives what it can spare and gets what
+ * it is thin at, at comparable market value. Pre-screened on one-player marginals;
+ * the caller still validates and scores every package with the full trade utility.
+ */
+function complementaryPackages(ctx: TradeContext, cpu: Franchise, partner: Franchise, allowed: (p: Player) => boolean): [string[], string[]][] {
+  const A = marginals(cpu, ctx);
+  const B = marginals(partner, ctx);
+  const talent = (p: Player) => generalTradeValue(p, 0).value;
+  const movable = (p: Player, fr: Franchise, m: Marginals) => !m.core.has(p.id) || requestedBy(ctx, p.id, fr.id);
+  const gives = cpu.players.filter((p) => movable(p, cpu, A));
+  const gets = partner.players.filter((p) => allowed(p) && movable(p, partner, B));
+  const tx = 0.8; // one-for-one transaction cost, as in tradeUtility
+
+  type Pair = { give: Player; get: Player; a: number; b: number };
+  const pairs: Pair[] = [];
+  for (const t of gets) {
+    const gainA = A.gain(t, partner.id);
+    if (gainA <= 0) continue;
+    for (const x of gives) {
+      // Beyond this gap the talent-gap penalties kick in for one side or the other.
+      if (Math.abs(talent(x) - talent(t)) > 8) continue;
+      const a = gainA - (A.loss.get(x.id) ?? 0) - tx;
+      if (a <= 0) continue;
+      const b = B.gain(x, cpu.id) - (B.loss.get(t.id) ?? 0) - tx;
+      if (b <= 0) continue;
+      pairs.push({ give: x, get: t, a, b });
+    }
+  }
+  pairs.sort((p, q) => Math.min(q.a, q.b) - Math.min(p.a, p.b));
+  const top = pairs.slice(0, 16);
+  const out: [string[], string[]][] = top.map((p) => [[p.give.id], [p.get.id]]);
+
+  // Two-for-one either way (salary matching or depth for quality), squad room permitting.
+  const rules = ctx.trade.rules;
+  if (rules.maxPlayersPerSide >= 2 && rules.maxPlayersTotal >= 3) {
+    const spare = (m: Marginals, ps: Player[], exclude: string) =>
+      ps.filter((p) => p.id !== exclude).sort((p, q) => (m.loss.get(p.id) ?? 0) - (m.loss.get(q.id) ?? 0)).slice(0, 3);
+    for (const p of top.slice(0, 5)) {
+      if (partner.players.length < partner.maxSquadSize) {
+        for (const y of spare(A, gives, p.give.id)) out.push([[p.give.id, y.id], [p.get.id]]);
+      }
+      if (cpu.players.length < cpu.maxSquadSize) {
+        for (const y of spare(B, gets, p.get.id)) out.push([[p.give.id], [p.get.id, y.id]]);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * A CPU looks at its biggest need, scans a partner's roster for players who
- * fill it, and builds a package from its own trade block. Returns the best
- * proposal both sides should plausibly accept, or null.
+ * fill it, and builds a package from its own trade block. It also looks for
+ * complementary swaps (depth it can spare for a slot it is thin at, and vice
+ * versa for the partner). Returns the best proposal both sides should
+ * plausibly accept, or null.
  */
 export function buildCpuOffer(ctx: TradeContext, cpuId: string, partnerId: string): TradeProposal | null {
   const cpu = ctx.franchises.find((f) => f.id === cpuId)!;
@@ -686,7 +788,6 @@ export function buildCpuOffer(ctx: TradeContext, cpuId: string, partnerId: strin
     .filter((p) => allowed(p) && (need ? fills[need](p) : cpuVal(p, partnerId) > weakestXi + 2))
     .sort((a, b) => cpuVal(b, partnerId) + boost(b) - (cpuVal(a, partnerId) + boost(a)))
     .slice(0, 8);
-  if (!targets.length) return null;
 
   // Packages: trade-block players first, then bench players outside the XI.
   const blockIds = cpuTradeBlock(cpu, ctx).map((b) => b.player.id);
@@ -697,34 +798,47 @@ export function buildCpuOffer(ctx: TradeContext, cpuId: string, partnerId: strin
     packages.push([a]);
     sellable.slice(i + 1, i + 4).forEach((b) => packages.push([a, b]));
   });
-  if (!packages.length) return null;
 
-  let best: { p: TradeProposal; u: number } | null = null;
+  const deals: [string[], string[]][] = [];
+  for (const t of targets) for (const pkg of packages) deals.push([pkg, [t.id]]);
+  const seen = new Set(deals.map(([g, r]) => `${[...g].sort()}|${[...r].sort()}`));
+  for (const d of complementaryPackages(ctx, cpu, partner, allowed)) {
+    const key = `${[...d[0]].sort()}|${[...d[1]].sort()}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deals.push(d);
+    }
+  }
+  if (!deals.length) return null;
+
+  let best: { p: TradeProposal; u: number; fit: UtilityBreakdown } | null = null;
   // Offers to the human need a clearer edge (avoids spam); CPU↔CPU deals just need to clear both thresholds.
   const myThreshold = thresholdFor(ctx, cpuId, ctx.difficulty) + (partnerIsHuman ? 1 : 0.25);
   const theirThreshold = thresholdFor(ctx, partnerId, ctx.difficulty);
-  for (const t of targets) {
-    for (const pkg of packages) {
-      const prop = balanced(makeProposal(ctx, cpuId, partnerId, pkg, [t.id], 'cpu'), ctx);
-      if (!validateTrade(prop, ctx).valid) continue;
-      const mine = tradeUtility(prop, ctx, 0, ctx.difficulty).utility;
-      if (mine < myThreshold) continue;
-      // Must look reasonable to the partner too (no spam / insulting offers).
-      const theirs = partnerIsHuman ? tradeUtility(prop, ctx, 1, 'Hard') : tradeUtility(prop, ctx, 1, ctx.difficulty);
-      const theirsOk = partnerIsHuman ? theirs.strengthGain > -0.6 : theirs.utility >= theirThreshold;
-      if (!theirsOk) continue;
-      if (!best || mine > best.u) best = { p: prop, u: mine };
-    }
+  for (const [give, get] of deals) {
+    const prop = balanced(makeProposal(ctx, cpuId, partnerId, give, get, 'cpu'), ctx);
+    if (!validateTrade(prop, ctx).valid) continue;
+    const mineU = tradeUtility(prop, ctx, 0, ctx.difficulty);
+    const mine = mineU.utility;
+    if (mine < myThreshold) continue;
+    // Must look reasonable to the partner too (no spam / insulting offers).
+    const theirs = partnerIsHuman ? tradeUtility(prop, ctx, 1, 'Hard') : tradeUtility(prop, ctx, 1, ctx.difficulty);
+    const theirsOk = partnerIsHuman ? theirs.strengthGain > -0.6 : theirs.utility >= theirThreshold;
+    if (!theirsOk) continue;
+    if (!best || mine > best.u) best = { p: prop, u: mine, fit: mineU };
   }
   if (!best) return null;
   const target = partner.players.find((p) => best!.p.sides[1].playerIds.includes(p.id));
+  const gained = need && best.fit.coverageGained.includes(COVERAGE_LABEL[need]) ? COVERAGE_LABEL[need] : best.fit.coverageGained[0];
   return {
     ...best.p,
     status: 'SUBMITTED',
     messages: [
-      need
-        ? `${cpu.shortName} need ${COVERAGE_LABEL[need]} and see ${target?.name} as the answer.`
-        : `${cpu.shortName} believe ${target?.name} would upgrade their starting XI.`,
+      gained
+        ? `${cpu.shortName} need ${gained} and see ${target?.name} as the answer.`
+        : best.fit.incomingInXi
+          ? `${cpu.shortName} believe ${target?.name} would upgrade their starting XI.`
+          : `${cpu.shortName} want ${target?.name} to strengthen their squad depth.`,
     ],
   };
 }
