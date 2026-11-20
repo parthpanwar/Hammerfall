@@ -12,6 +12,7 @@ import { GLOBAL_PLAYERS } from '@/lib/data/players';
 import { ChevronRight, ChevronLeft, Play, Plus, FolderOpen, Database, Settings, RotateCcw, Trophy, Sliders, Calendar, Info, X } from 'lucide-react';
 import { DIFFICULTY_GUIDE, difficultyGuide } from '@/lib/data/difficulty-guide';
 import { TeamEyes } from '@/components/fx/TeamEyes';
+import { setSiteTheme, useSiteTheme } from '@/lib/theme/site-theme';
 import { IsoPyramid } from '@/components/fx/IsoPyramid';
 import type { AuctionPace, AuctionType, CPUDifficulty, Player } from '@/lib/types/game';
 import { auctionTypeFor, campaignLength, irlAuctionType, type CycleMode } from '@/lib/flow/season-flow';
@@ -140,6 +141,7 @@ export function MainMenu() {
   const [showSaves, setShowSaves] = useState(false);
   const [showDb, setShowDb] = useState(false);
   const [hoverTeam, setHoverTeam] = useState<string | null>(null);
+  const siteTheme = useSiteTheme();
   const goto = (v: View) => {
     setHoverTeam(null);
     setView(v);
@@ -197,7 +199,7 @@ export function MainMenu() {
   // the team you pick keeps it. The mode step stays in the neutral house world.
   const worldId =
     hoverTeam ??
-    (view === 'home' ? null : view === 'menu' ? (hasActiveCareer ? humanFranchiseId : null) : view === 'mode' ? null : teamId);
+    (view === 'home' || view === 'menu' || view === 'mode' ? siteTheme : teamId);
 
   return (
     <div
@@ -225,7 +227,7 @@ export function MainMenu() {
       {view !== 'home' && (
       <div className="border-b border-[var(--m-ink)] transition-colors duration-500">
         <div className="max-w-[1440px] mx-auto h-11 px-4 sm:px-6 flex items-center gap-5 text-sm">
-          <button className="flex items-center gap-2 font-semibold" onClick={() => goto('menu')}>
+          <button className="flex items-center gap-2 font-semibold" onClick={() => goto('home')} title="Back to the title screen">
             <span className="w-5 h-5 rounded-full border border-[var(--m-ink)] grid place-items-center" aria-hidden>
               <span className="w-2.5 h-2.5 rounded-full bg-[var(--m-accent)]" />
             </span>
@@ -243,7 +245,7 @@ export function MainMenu() {
       )}
 
       {view === 'home' ? (
-        <HomeScreen onBegin={() => goto('menu')} />
+        <HomeScreen onBegin={() => goto('menu')} theme={siteTheme} onTheme={setSiteTheme} />
       ) : view === 'menu' ? (
         <MenuScreen
           hasActiveCareer={hasActiveCareer}
@@ -253,6 +255,7 @@ export function MainMenu() {
               : ''
           }
           savedCount={savedCount}
+          onBack={() => goto('home')}
           onContinue={resumeCareer}
           onNew={() => goto('mode')}
           onLoad={() => setShowSaves(true)}
@@ -345,14 +348,14 @@ export function MainMenu() {
 // ------------------------------------------------------------
 // Title screen: one statement, one button. Fits the viewport, never scrolls.
 // ------------------------------------------------------------
-function HomeScreen({ onBegin }: { onBegin: () => void }) {
+function HomeScreen({ onBegin, theme, onTheme }: { onBegin: () => void; theme: string | null; onTheme: (id: string | null) => void }) {
   return (
-    <div className="relative h-[100dvh] overflow-hidden flex flex-col items-center justify-center px-6 text-center">
+    <div className="relative h-[100dvh] overflow-hidden flex flex-col px-0 text-center">
       <div className="absolute inset-0 text-[var(--m-ink)] opacity-[0.22]" aria-hidden>
-        <LineField seed="house" lines={48} accentEvery={9} className="w-full h-full m-drift" />
+        <LineField seed={theme ?? 'house'} lines={48} accentEvery={9} className="w-full h-full m-drift" />
       </div>
-      <TeamEyes className="absolute top-6 sm:top-8 left-0 right-0 text-left" />
-      <div className="relative flex flex-col items-center">
+      <TeamEyes className="relative mt-6 sm:mt-8 text-left" selected={theme} onSelect={onTheme} />
+      <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-10">
         <span className="m-rise m-label tracking-[0.3em]">IPL {START_SEASON} · Offseason</span>
         <h1 className="m-rise m-display text-[4.5rem] sm:text-[8rem] leading-[0.9] mt-5" style={{ animationDelay: '80ms' }}>
           IPL Dynasty
@@ -379,6 +382,7 @@ function HomeScreen({ onBegin }: { onBegin: () => void }) {
 // Menu: shown after Begin.
 // ------------------------------------------------------------
 function MenuScreen({
+  onBack,
   hasActiveCareer,
   activeLabel,
   savedCount,
@@ -388,6 +392,7 @@ function MenuScreen({
   onDb,
   onSettings,
 }: {
+  onBack: () => void;
   hasActiveCareer: boolean;
   activeLabel: string;
   savedCount: number;
@@ -407,10 +412,13 @@ function MenuScreen({
     <div className="flex-1 flex items-center justify-center gap-16 xl:gap-28 px-6 py-10">
       <div className="hidden lg:block w-[300px] m-rise" aria-hidden>
         <IsoPyramid mode="idle" className="w-full h-auto overflow-visible" />
-        <div className="mx-auto mt-3 h-3 w-3/4 rounded-[50%] bg-[var(--m-ink)] opacity-10 blur-[2px]" />
+        <div className="mx-auto mt-3 h-3 w-3/4 rounded-[50%] bg-[var(--m-ink)] opacity-[0.06] blur-[3px]" />
         <div className="text-center text-xs text-[var(--m-faint)] mt-4">Ten franchises. One dynasty.</div>
       </div>
       <div className="w-full max-w-lg">
+        <button onClick={onBack} className="group mb-4 inline-flex items-center gap-1 text-sm text-[var(--m-dim)] hover:text-[var(--m-text)]">
+          <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" /> Title screen
+        </button>
         <nav className="flex flex-col" aria-label="Main menu">
           {items.map((it, i) => {
             const Icon = it.icon;

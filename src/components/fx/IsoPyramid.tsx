@@ -41,12 +41,28 @@ function cubePaths(c: Cube) {
   return { top, left, right };
 }
 
+/** Muted faces: the team colour washed toward paper so the stack stays quiet. */
+const PAPER = '#F6F1EC';
+const INK = '#3A3330';
+function faces(accent: string) {
+  const base = mixHex(accent, PAPER, 0.5);
+  return {
+    left: base,
+    right: mixHex(base, INK, 0.16),
+    top: mixHex(base, '#ffffff', 0.4),
+    stroke: mixHex(INK, PAPER, 0.35),
+  };
+}
+
 export function IsoPyramid({
   mode = 'idle',
   className = '',
   duration = 1.6,
+  playing = true,
 }: {
   mode?: 'build' | 'idle';
+  /** Build mode: hold every cube out of view until this turns true. */
+  playing?: boolean;
   className?: string;
   /** Build mode: total seconds for all ten cubes to land. */
   duration?: number;
@@ -56,17 +72,21 @@ export function IsoPyramid({
     <svg viewBox={`${-3 * CX - 6} ${-2 * S - 6} ${6 * CX + 12} ${5 * S + 12}`} className={className} aria-hidden>
       {DRAW.map((c) => {
         const f = FRANCHISES[c.order];
-        const w = getTeamWorld(f?.id);
+        const col = faces(getTeamWorld(f?.id).accent);
         const p = cubePaths(c);
         const style: React.CSSProperties =
           mode === 'build'
             ? { animationDelay: `${c.order * step}s` }
             : { animationDelay: `${-(c.order * 0.37)}s`, animationDuration: `${3.2 + (c.order % 3) * 0.6}s` };
         return (
-          <g key={`${c.i}${c.j}${c.k}`} className={mode === 'build' ? 'fx-cube-drop' : 'fx-cube-bob'} style={style}>
-            <path d={p.left} fill={w.accent} stroke={w.ink} strokeWidth={1.2} strokeLinejoin="round" />
-            <path d={p.right} fill={mixHex(w.accent, '#000000', 0.28)} stroke={w.ink} strokeWidth={1.2} strokeLinejoin="round" />
-            <path d={p.top} fill={mixHex(w.accent, '#ffffff', 0.32)} stroke={w.ink} strokeWidth={1.2} strokeLinejoin="round" />
+          <g
+            key={`${c.i}${c.j}${c.k}`}
+            className={mode === 'build' ? (playing ? 'fx-cube-drop' : 'opacity-0') : 'fx-cube-bob'}
+            style={style}
+          >
+            <path d={p.left} fill={col.left} stroke={col.stroke} strokeWidth={1} strokeLinejoin="round" />
+            <path d={p.right} fill={col.right} stroke={col.stroke} strokeWidth={1} strokeLinejoin="round" />
+            <path d={p.top} fill={col.top} stroke={col.stroke} strokeWidth={1} strokeLinejoin="round" />
           </g>
         );
       })}

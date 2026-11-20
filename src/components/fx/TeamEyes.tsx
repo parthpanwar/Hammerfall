@@ -1,8 +1,8 @@
 'use client';
 
 // The ten franchises as a tray of "eyes" (jersey-colour iris, ink pupil, a glint).
-// Purely decorative: the pupils follow the pointer and each eye blinks on its
-// own clock. Nothing here is clickable.
+// The pupils follow the pointer and each eye blinks on its own clock. Clicking
+// an eye dresses the site in that team's world; clicking it again resets it.
 
 import React, { useEffect, useRef } from 'react';
 import { FRANCHISES } from '@/lib/data/franchises';
@@ -10,7 +10,16 @@ import { getTeamWorld } from '@/lib/theme/team-themes';
 
 const PUPIL_TRAVEL = 0.16; // share of the iris the pupil may move
 
-export function TeamEyes({ className = '' }: { className?: string }) {
+export function TeamEyes({
+  className = '',
+  selected,
+  onSelect,
+}: {
+  className?: string;
+  /** The team whose theme is applied (its cell turns ink, its eye turns paper). */
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+}) {
   const trayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,38 +62,47 @@ export function TeamEyes({ className = '' }: { className?: string }) {
   }, []);
 
   return (
-    <div className={className || 'relative'} role="img" aria-label="The ten IPL franchises">
+    <div className={className || 'relative'}>
       {/* The hairline the tray hangs from, running the full width */}
-      <div className="absolute left-0 right-0 top-0 h-[2px] bg-[var(--m-ink)]" aria-hidden />
+      <div className="absolute left-0 right-0 top-0 h-px bg-[var(--m-ink)]" aria-hidden />
       <div
         ref={trayRef}
-        className="relative inline-flex border-y-2 border-r-2 border-[var(--m-ink)] rounded-br-[2.5rem] overflow-hidden bg-[var(--m-bg)]"
-        aria-hidden
+        role="radiogroup"
+        aria-label="Site theme: pick a franchise"
+        className="relative inline-flex border-y border-r border-[var(--m-ink)] rounded-br-[1.5rem] overflow-hidden bg-[var(--m-bg)] transition-colors duration-500"
       >
         {FRANCHISES.map((f, i) => {
           const w = getTeamWorld(f.id);
+          const active = selected === f.id;
           return (
-            <div
+            <button
               key={f.id}
-              title={f.name}
-              className={`fx-eye-cell group grid place-items-center p-1 sm:p-2.5 xl:p-3 ${i > 0 ? 'border-l-2 border-[var(--m-ink)]' : ''}`}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={`${f.name} theme`}
+              title={active ? `${f.name} · click again for the house theme` : `${f.name} theme`}
+              onClick={() => onSelect(active ? null : f.id)}
+              className={`fx-eye-cell group grid place-items-center p-1 sm:p-1.5 lg:p-2 transition-colors duration-300 ${
+                i > 0 ? 'border-l border-[var(--m-ink)]' : ''
+              } ${active ? 'bg-[var(--m-ink)]' : 'hover:bg-[var(--m-raised)]'}`}
               style={{ animationDelay: `${120 + i * 70}ms` }}
             >
               <span className="block transition-transform duration-300 ease-out group-hover:scale-110">
                 <span
-                  className="fx-eye relative block w-6 h-6 sm:w-10 sm:h-10 lg:w-14 lg:h-14 xl:w-[4.25rem] xl:h-[4.25rem] rounded-full"
-                  style={{ background: w.accent, animationDelay: `${(i * 1.37) % 5}s`, animationDuration: `${5.5 + (i % 4) * 1.3}s` }}
+                  className="fx-eye relative block w-5 h-5 sm:w-7 sm:h-7 lg:w-8 lg:h-8 rounded-full"
+                  style={{ background: active ? w.paper : w.accent, animationDelay: `${(i * 1.37) % 5}s`, animationDuration: `${5.5 + (i % 4) * 1.3}s` }}
                 >
                   <span
                     data-iris
                     className="fx-pupil absolute left-1/2 top-1/2 w-[48%] h-[48%] rounded-full"
-                    style={{ background: '#221F1D' }}
+                    style={{ background: active ? w.accent : '#221F1D' }}
                   >
-                    <span className="absolute right-[18%] top-[16%] w-[22%] h-[22%] rounded-full" style={{ background: w.paper }} />
+                    <span className="absolute right-[18%] top-[16%] w-[24%] h-[24%] rounded-full" style={{ background: w.paper }} />
                   </span>
                 </span>
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

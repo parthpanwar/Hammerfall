@@ -22,6 +22,7 @@ import { auctionTypeFor } from '@/lib/flow/season-flow';
 import { worldVars } from '@/components/mynba/primitives';
 import { SeasonTransitionModal } from '@/components/career/SeasonTransitionModal';
 import { LoadingScreen } from '@/components/fx/LoadingScreen';
+import { useSiteTheme } from '@/lib/theme/site-theme';
 
 const subscribeNoop = () => () => {};
 
@@ -38,7 +39,9 @@ export default function Home() {
   }, [phase, ensurePhaseData]);
 
   // The whole page takes on the franchise's world (paper, ink, jersey accents).
-  const worldId = phase === 'MainMenu' ? null : humanFranchiseId || null;
+  // Outside a career the site wears the theme picked on the title screen.
+  const siteTheme = useSiteTheme();
+  const worldId = phase === 'MainMenu' ? siteTheme : humanFranchiseId || null;
   useEffect(() => {
     const vars = worldVars(worldId) as Record<string, string>;
     Object.entries(vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
