@@ -11,7 +11,7 @@ import { FRANCHISES } from '@/lib/data/franchises';
 import { GLOBAL_PLAYERS } from '@/lib/data/players';
 import { ChevronRight, ChevronLeft, Play, Plus, FolderOpen, Database, Settings, RotateCcw, Trophy, Sliders, Calendar, Info, X } from 'lucide-react';
 import { DIFFICULTY_GUIDE, difficultyGuide } from '@/lib/data/difficulty-guide';
-import { TeamEyes } from '@/components/fx/TeamEyes';
+import { HomeScreen } from './HomeScreen';
 import { setSiteTheme, useSiteTheme } from '@/lib/theme/site-theme';
 import { IsoPyramid } from '@/components/fx/IsoPyramid';
 import type { AuctionPace, AuctionType, CPUDifficulty, Player } from '@/lib/types/game';
@@ -341,39 +341,6 @@ export function MainMenu() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ------------------------------------------------------------
-// Title screen: one statement, one button. Fits the viewport, never scrolls.
-// ------------------------------------------------------------
-function HomeScreen({ onBegin, theme, onTheme }: { onBegin: () => void; theme: string | null; onTheme: (id: string | null) => void }) {
-  return (
-    <div className="relative h-[100dvh] overflow-hidden flex flex-col px-0 text-center">
-      <div className="absolute inset-0 text-[var(--m-ink)] opacity-[0.22]" aria-hidden>
-        <LineField seed={theme ?? 'house'} lines={48} accentEvery={9} className="w-full h-full m-drift" />
-      </div>
-      <TeamEyes className="relative mt-6 sm:mt-8 text-left" selected={theme} onSelect={onTheme} />
-      <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-10">
-        <span className="m-rise m-label tracking-[0.3em]">IPL {START_SEASON} · Offseason</span>
-        <h1 className="m-rise m-display text-[4.5rem] sm:text-[8rem] leading-[0.9] mt-5" style={{ animationDelay: '80ms' }}>
-          IPL Dynasty
-        </h1>
-        <p className="m-rise text-[var(--m-dim)] mt-6 max-w-md leading-relaxed text-lg" style={{ animationDelay: '160ms' }}>
-          Ten franchises. One auction room. Build the squad, then live with every rupee.
-        </p>
-        <MButton
-          variant="primary"
-          size="xl"
-          onClick={onBegin}
-          className="group m-rise mt-12 min-w-[220px] justify-center"
-          style={{ animationDelay: '260ms' }}
-          autoFocus
-        >
-          Begin <ChevronRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1" />
-        </MButton>
-      </div>
     </div>
   );
 }
