@@ -151,6 +151,31 @@ export const PROGRESSION_TUNING = {
     prospectPedigree: 1.1,
     /** CPU bid ceiling for never-played uncapped players, × market value. */
     prospectBidCeiling: 1.1,
+    /** Share of a cash-rich room's price inflation that reaches a player, by current overall. */
+    inflationByOvr: [
+      { minOvr: 85, weight: 1 },
+      { minOvr: 82, weight: 0.85 },
+      { minOvr: 79, weight: 0.75 },
+      { minOvr: 76, weight: 0.55 },
+      { minOvr: 0, weight: 0.25 },
+    ],
+    /** …halved-ish for players 32+ who are no longer elite. */
+    veteranInflation: 0.6,
+    decliningDiscount: 0.85,
+    agingDiscount: 0.9,
+    /** Max pedigree multiplier for a player rated below 80 (no name premium). */
+    reputationCapBelow80: 1.1,
+    /** CPU bid ceiling (× market value) for players 30+ rated 80 or less. */
+    veteranBidCeiling: 1.15,
+    /** Mega-auction spend pacing: valuation boost when a team holds more per open slot than slots cost. */
+    megaPace: { fillTo: 20, maxBoost: 2.6, exponent: 0.7, targetSpend: 0.97, scheduleExponent: 0.6, lagGain: 6, qualityDepthOvr: 76, lateFrom: 0.2, lateSlotShare: 2.4, lateMaxOverMarket: 2.0, bestRemainingShare: 0.7 },
+    /** Bid ceiling: rating-curve price at (current overall + margin) × multiplier × inflation. */
+    ceilingOvrMargin: 3,
+    ceilingMultiplier: 1.0,
+    /** Mega price index never opens below this. */
+    megaIndexFloor: 1.2,
+    /** Late in a mega, a team still holding this much keeps buying useful squad players (OVR ≥ minOvr). */
+    megaDepth: { minPurse: 300, minOvr: 70, maxSquad: 24, fromProgress: 0.6 },
   },
 };
 

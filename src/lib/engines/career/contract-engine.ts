@@ -4,14 +4,42 @@
 // and governs the 3-year Mega / Mini auction cycle.
 // ============================================================
 
-import type { Franchise, Player, AuctionType, RetentionRule } from '@/lib/types/game';
+import type { Franchise, Player, AuctionType, RetentionRule, GameSettings } from '@/lib/types/game';
+import { auctionTypeFor } from '@/lib/flow/season-flow';
 import type { PlayerContract } from '@/lib/types/career';
 
-/** Base purse in 2026 is 120 Cr (12,000 Lakhs), increasing by 5 Cr (500 Lakhs) each season */
-export function getLeaguePurseForSeason(seasonYear: number): number {
-  // IPL 2026 purse was ₹125 Cr; later seasons assume ₹5 Cr growth a year.
-  const inflationYears = Math.max(0, seasonYear - 2026);
-  return 12500 + inflationYears * 500;
+/**
+ * League purse (lakhs), following the real trend: IPL 2022 mega ₹90 Cr → 2023 ₹95 Cr →
+ * 2024 ₹100 Cr → 2025 mega ₹120 Cr. Minis add ₹5 Cr; a mega auction adds ₹20 Cr, so a
+ * full cycle grows the purse by ₹30 Cr (2028 mega ₹150 Cr, 2031 mega ₹180 Cr).
+ * Custom campaigns grow on their own cycle (mega in years 1, 4…), from their own
+ * starting purse, scaled to it.
+ */
+export const PURSE_GROWTH = { base2025: 12000, mini: 500, mega: 2000 };
+
+type PurseSettings = Pick<GameSettings, 'startingSeason' | 'auctionType'> & { cycleMode?: 'custom' | 'irl'; customPurse?: number };
+
+/** The real-calendar purse for a season. */
+function officialPurse(seasonYear: number): number {
+  let purse = PURSE_GROWTH.base2025;
+  if (seasonYear >= 2025) {
+    for (let s = 2026; s <= seasonYear; s++) purse += getAuctionTypeForSeason(s) === 'Mega' ? PURSE_GROWTH.mega : PURSE_GROWTH.mini;
+  } else {
+    for (let s = 2025; s > seasonYear; s--) purse -= getAuctionTypeForSeason(s) === 'Mega' ? PURSE_GROWTH.mega : PURSE_GROWTH.mini;
+  }
+  return purse;
+}
+
+export function getLeaguePurseForSeason(seasonYear: number, settings?: PurseSettings): number {
+  if (!settings || (settings.cycleMode ?? 'custom') === 'irl') return officialPurse(seasonYear);
+  const start = settings.startingSeason;
+  const startPurse = settings.customPurse ?? officialPurse(start);
+  const k = startPurse / officialPurse(start);
+  let purse = startPurse;
+  for (let s = start + 1; s <= seasonYear; s++) {
+    purse += Math.round((auctionTypeFor(s, settings) === 'Mega' ? PURSE_GROWTH.mega : PURSE_GROWTH.mini) * k);
+  }
+  return purse;
 }
 
 /**
@@ -63,10 +91,11 @@ export function createInitialContracts(
  */
 export function advanceContractsForNewSeason(
   contracts: Record<string, PlayerContract>,
-  seasonYear: number
+  seasonYear: number,
+  auctionType?: AuctionType
 ): Record<string, PlayerContract> {
   const updatedContracts: Record<string, PlayerContract> = {};
-  const upcomingAuctionType = getAuctionTypeForSeason(seasonYear);
+  const upcomingAuctionType = auctionType ?? getAuctionTypeForSeason(seasonYear);
 
   for (const [playerId, contract] of Object.entries(contracts)) {
     if (contract.status === 'Retired' || contract.status === 'Released') {
@@ -102,9 +131,10 @@ export function advanceContractsForNewSeason(
 export function calculateFranchiseUpcomingPurse(
   franchise: Franchise,
   retainedPlayers: Player[],
-  seasonYear: number
+  seasonYear: number,
+  leaguePurse?: number
 ): { totalPurse: number; spentOnRetained: number; remainingPurse: number } {
-  const totalPurse = getLeaguePurseForSeason(seasonYear);
+  const totalPurse = leaguePurse ?? getLeaguePurseForSeason(seasonYear);
   const spentOnRetained = retainedPlayers.reduce(
     (sum, p) => sum + (p.soldPrice > 0 ? p.soldPrice : p.retentionCost || p.basePrice),
     0

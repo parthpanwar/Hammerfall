@@ -13,6 +13,7 @@ import { progressPlayerAttributes, progressAllPlayers } from '../player-progress
 import { calculateRetirementProbability, processSeasonRetirements } from '../retirement-engine';
 import { generateRookieDraftClass } from '../player-generator';
 import { GLOBAL_PLAYERS } from '@/lib/data/players';
+import { getMegaRetentionRules } from '@/lib/data/retention-rules';
 import {
   getAuctionTypeForSeason,
   getLeaguePurseForSeason,
@@ -134,7 +135,16 @@ async function runCareerModeTests() {
   assert(getAuctionTypeForSeason(2028) === 'Mega', `IPL 2028 follows a Mega Auction (3-year cycle reset)`);
   assert(getLeaguePurseForSeason(2026) === 12500, `2026 Purse Cap is 125 Cr (12,500 Lakhs) — the real IPL 2026 purse`);
   assert(getLeaguePurseForSeason(2027) === 13000, `2027 Purse Cap inflates to 130 Cr (13,000 Lakhs)`);
-  assert(getLeaguePurseForSeason(2030) === 14500, `2030 Purse Cap inflates to 145 Cr (14,500 Lakhs)`);
+  // Real trend: 2022 ₹90 Cr mega → 95 → 100 → 2025 ₹120 Cr mega; +₹5 Cr a mini, +₹20 Cr a mega.
+  assert(getLeaguePurseForSeason(2022) === 9000 && getLeaguePurseForSeason(2025) === 12000, 'Purse curve reproduces 2022 (₹90 Cr) and 2025 (₹120 Cr)');
+  assert(getLeaguePurseForSeason(2028) === 15000, `2028 mega purse jumps to 150 Cr (${getLeaguePurseForSeason(2028)})`);
+  assert(getLeaguePurseForSeason(2030) === 16000, `2030 Purse Cap is 160 Cr (${getLeaguePurseForSeason(2030)})`);
+  const custom = { startingSeason: 2027, auctionType: 'Mega' as const, cycleMode: 'custom' as const };
+  assert(getLeaguePurseForSeason(2030, custom) === 16000 && getLeaguePurseForSeason(2029, custom) === 14000, 'Custom cycle: purse jumps at its own year-4 mega (140 → 160 Cr)');
+  const r130 = getMegaRetentionRules(13000).retentionCosts;
+  const r160 = getMegaRetentionRules(16000).retentionCosts;
+  assert(r130[0] === 1900 && r160[0] === 2200 && r160[5] === 500, `Retention slabs scale with the purse (130 Cr: ${r130.map((c) => c / 100).join('/')}, 160 Cr: ${r160.map((c) => c / 100).join('/')})`);
+  assert(getMegaRetentionRules(12000).retentionCosts.slice(0, 3).join() === '1800,1400,1100', 'At ₹120 Cr the slabs are the real IPL 2025 ones (18/14/11)');
 
   // Contract advancement
   const testFranchise: Franchise = { ...FRANCHISES[0], players: [youngTalent, masterVet] };

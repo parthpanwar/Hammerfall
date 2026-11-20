@@ -15,7 +15,7 @@ import { baseMarketValue, computePriceIndex, iplPedigree, isOverpaidContract } f
 import { addIplSeason } from '../career/ipl-experience';
 import type { AuctionSession, Franchise, Player, PlayerSeasonStats, RetentionDecision } from '../../types/game';
 import { cpuRetentionDecisions } from '../retention-engine';
-import { RETENTION_RULES_2026 } from '../../data/retention-rules';
+import { getMegaRetentionRules } from '../../data/retention-rules';
 
 {
   const seeded = createSeededRandom(11);
@@ -95,7 +95,7 @@ function auction(mode: 'Mega' | 'Mini') {
     const rng = createSeededRandom(6);
     let all: RetentionDecision[] = [];
     for (const f of useGameStore.getState().franchises) {
-      const decisions = cpuRetentionDecisions(f, { ...RETENTION_RULES_2026, totalPurse: f.totalPurse }, rng);
+      const decisions = cpuRetentionDecisions(f, getMegaRetentionRules(f.totalPurse), rng);
       all = all.concat(decisions);
       const kept = f.players.filter((p) => decisions.some((d) => d.playerId === p.id));
       useGameStore.getState().updateFranchise(f.id, {
@@ -120,7 +120,9 @@ function auction(mode: 'Mega' | 'Mini') {
 }
 const mini = auction('Mini');
 console.log(`   ↳ mini: index ${mini.session.priceIndex}, ₹${(mini.before / 100).toFixed(1)} Cr in hand, ₹${(mini.left / 100).toFixed(1)} Cr left`);
-assert(mini.left / mini.before <= 0.3, `mini auction spends most of the league's money (${Math.round((mini.left / mini.before) * 100)}% left; was ~87%)`);
+// ≤ 40% (was ≤ 30%): surplus mini money now chases current quality, not mid-tier or
+// faded names, so a thin pool can't absorb all of it — by design.
+assert(mini.left / mini.before <= 0.4, `mini auction spends most of the league's money (${Math.round((mini.left / mini.before) * 100)}% left; was ~87%)`);
 assert(Math.max(...mini.res.session.soldPlayers.map((x) => x.price)) >= 1000, 'the best players in a cash-rich mini go for ₹10 Cr+');
 const minisOverPaid = mini.res.session.soldPlayers.filter((x) => {
   const p = mini.session.playerPool.find((q) => q.id === x.playerId);

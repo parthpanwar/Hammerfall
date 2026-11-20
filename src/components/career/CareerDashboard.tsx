@@ -54,7 +54,7 @@ export function CareerDashboard() {
   const winPct = totalMatches > 0 ? (((franchiseRecord?.allTimeWins || 0) / totalMatches) * 100).toFixed(1) : '0.0';
 
   const upcomingAuctionType = auctionTypeFor(currentSeason, settings);
-  const currentPurseCap = getLeaguePurseForSeason(currentSeason);
+  const currentPurseCap = getLeaguePurseForSeason(currentSeason, settings);
 
   const humanPlayers = humanFranchise?.players || [];
   const contracts = careerState.contracts;

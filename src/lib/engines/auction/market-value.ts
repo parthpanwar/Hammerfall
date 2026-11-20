@@ -117,7 +117,11 @@ export function iplPedigree(p: Player, season: number): Pedigree {
     return { multiplier: m, tag, gap, performance: 0, proven: false };
   }
 
-  const perf = iplPerformance(p);
+  // Teams pay for what a player is doing now: last season counts for more than a
+  // decade-old IPL record (a faded star is not bought on his name).
+  const career = iplPerformance(p);
+  const recent = p.development && p.development.season >= season - 1 && typeof p.development.perf === 'number' ? clamp(p.development.perf, -1, 1) : null;
+  const perf = recent === null ? career : clamp(0.4 * career + 0.6 * recent, -1, 1);
   const proven = r.seasons >= 3 || r.matches >= 25;
   const g = gap ?? 9;
   let m = g <= 0 ? 1.1 : g === 1 ? 1.0 : g === 2 ? 0.82 : g === 3 ? 0.68 : 0.55;
@@ -130,6 +134,13 @@ export function iplPedigree(p: Player, season: number): Pedigree {
   m *= overseasAgeFactor(p, proven && g <= 1);
   const buzz = !overseas && domesticBuzz(p, season) && r.matches < 15;
   if (buzz) m *= 1.15;
+  const M = PROGRESSION_TUNING.market;
+  // Fading: dropped 2+ last off-season, or past 33 and no longer elite.
+  const d = p.development;
+  if (d && d.season >= season - 1 && (d.trend === 'Declining' || d.overallDelta <= -2)) m *= M.decliningDiscount;
+  if (p.age >= 33 && p.ratings.overall < 82) m *= M.agingDiscount;
+  // Reputation can't carry a merely decent player: the premium needs a current 80+.
+  if (p.ratings.overall < 80) m = Math.min(m, M.reputationCapBelow80);
 
   let tag: PedigreeTag;
   if (g >= 2) tag = 'Out of the IPL';
@@ -203,7 +214,19 @@ export function computePriceIndex(franchises: Franchise[], pool: Player[], seaso
     values.slice(starters, slots).reduce((t, v) => t + Math.max(20, v * 0.3), 0) +
     Math.max(0, slots - values.length) * 20;
   if (worth <= 0) return 1;
-  return Math.round(clamp(spendable / worth, 0.3, 3.2) * 100) / 100;
+  // A mega room never deflates below list value: the purse has to be spent there
+  // (unspent mega money is wasted), and teams fill 23–25 spots, not 40% of them.
+  const floor = mega ? PROGRESSION_TUNING.market.megaIndexFloor : 0.3;
+  return Math.round(clamp(spendable / worth, floor, 3.2) * 100) / 100;
+}
+
+/**
+ * How far through the auction we are (0 … 1). The accelerated rounds (2, 3) re-run
+ * the unsold players from index 0, so they count as the end of the auction.
+ */
+export function auctionProgress(session: Pick<AuctionSession, 'round' | 'currentPlayerIndex' | 'playerPool'>): number {
+  if ((session.round ?? 1) >= 2) return 1;
+  return session.playerPool.length ? Math.min(1, session.currentPlayerIndex / session.playerPool.length) : 1;
 }
 
 const indexCache = new Map<string, number>();
@@ -237,15 +260,34 @@ export function sessionPriceIndex(session: AuctionSession): number {
  * teams price on talent, not on how much cash is left over.
  */
 function inflationWeight(p: Player, value: number): number {
-  const w = value >= 400 ? 1 : value >= 150 ? 0.8 : 0.5;
+  void value;
+  const M = PROGRESSION_TUNING.market;
+  // Surplus money chases current quality, not price tags or reputations.
+  const ovr = p.ratings.overall;
+  let w = M.inflationByOvr.find((r) => ovr >= r.minOvr)?.weight ?? 0.25;
+  if (p.age >= 32 && ovr < 84) w *= M.veteranInflation;
   const unproven = p.status === 'Uncapped' && !(p.ipl && p.ipl.matches > 0);
-  return unproven ? w * PROGRESSION_TUNING.market.unprovenInflation : w;
+  return unproven ? w * M.unprovenInflation : w;
 }
 
 export function auctionMarketValue(p: Player, session: Pick<AuctionSession, 'seasonYear' | 'auctionType' | 'id' | 'priceIndex' | 'franchises' | 'playerPool'>): number {
   const base = baseMarketValue(p, session.seasonYear);
   const idx = sessionPriceIndex(session as AuctionSession);
   return Math.max(p.basePrice, Math.round((base * Math.pow(idx, inflationWeight(p, base))) / 5) * 5);
+}
+
+/**
+ * Hard ceiling on any CPU bid (lakhs): the rating curve's price for a player a few
+ * points better than he is NOW, with this player's share of the room's inflation.
+ * A former 82 now rated 74 is priced as a 74 — never ₹18 Cr. Youngsters keep their
+ * headroom allowance through the curve; the elite are effectively uncapped.
+ */
+export function ratingPriceCeiling(p: Player, session: Pick<AuctionSession, 'seasonYear' | 'auctionType' | 'id' | 'priceIndex' | 'franchises' | 'playerPool'>): number {
+  const T = PROGRESSION_TUNING.market;
+  const lifted = { ...p, ratings: { ...p.ratings, overall: p.ratings.overall + T.ceilingOvrMargin } };
+  const base = auctionRatingValue(lifted);
+  const idx = Math.max(1, sessionPriceIndex(session as AuctionSession));
+  return Math.max(p.basePrice, Math.round(base * Math.pow(idx, inflationWeight(p, base)) * T.ceilingMultiplier));
 }
 
 /** What the market thinks he is worth, without the base-price floor (lakhs). */

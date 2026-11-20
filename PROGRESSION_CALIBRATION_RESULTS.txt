@@ -1,96 +1,156 @@
 
 ================ seed 42 ================
+  Mega auction 2027 money: spent 92% of available · left per team ₹[4.6, 1.0, 1.9, 1.1, 10.7, 6.0, 3.6, 6.3, 8.3, 7.0] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: 2 — Venkatesh Iyer 31 77(peak 77) ₹7.0Cr Capped | Chetan Sakariya 28 77(peak 77) ₹6.5Cr Capped
 
--- Season 2026 (year 1) --
-  IPL-relevant pool: 90+ 7 · 85-89 28 · 80-84 70 · 75-79 72 · 70-74 52 · <70 53 · mean 76.33
-  Progression → 2027: Breakout 7 · Rising 32 · Stalled 13 · Bust 5 · Domestic breakout 15 · stall rate 10%
-  Strong young (n=2): +9.0 OVR, +4.5 POT · poor (n=6): 1.3 OVR, -3.0 POT · idle (n=54): +1.4 OVR
+-- Season 2027 (year 1) --
+  IPL-relevant pool: 90+ 7 · 85-89 28 · 80-84 70 · 75-79 72 · 70-74 62 · <70 48 · mean 76.37
+  Retirements → 2028: 15
+  Progression → 2028: Breakout 12 · Rising 29 · Stalled 9 · Bust 5 · Domestic breakout 15 · stall rate 12%
+  Strong young (n=2): +7.5 OVR, +5.0 POT · poor (n=4): 0.5 OVR, -3.8 POT · idle (n=50): +1.3 OVR
   Top 15 Indians ≤ 24:
-    Yashasvi Jaiswal (24) 89/94 → 90/94 Steady m14 perf 0.28
-    Sai Sudharsan (24) 88/92 → 88/91 Stalled m14 perf -0.09
-    Tilak Varma (23) 86/91 → 86/88 Stalled m14 perf -0.42
-    Vaibhav Suryavanshi (15) 77/93 → 85/96 Breakout m14 perf 0.60
-    Nitish Kumar Reddy (22) 80/86 → 83/87 Rising m14 perf -0.67
-    Ayush Mhatre (19) 74/88 → 83/94 Breakout m14 perf 1.50
-    Angkrish Raghuvanshi (20) 75/86 → 81/86 Breakout m14 perf 0.21
-    Riyan Parag (24) 80/86 → 81/85 Steady m0 perf —
-    Abhishek Porel (23) 75/85 → 79/88 Breakout m14 perf 0.57
-    Mayank Yadav (23) 78/87 → 79/83 Steady m14 perf -0.42
-    Harshit Rana (24) 78/83 → 78/82 Stalled m0 perf —
-    Prince Yadav (24) 70/76 → 77/80 Domestic breakout m0 perf —
-    Smaran Ravichandran (22) 70/80 → 76/82 Rising m5 perf 0.47
-    Naman Dhir (23) 73/82 → 75/79 Rising m14 perf -0.40
-    Nehal Wadhera (24) 75/79 → 75/77 Bust m2 perf —
-  Mini auction 2027: wonderkids 3 · hot prospects 8 · ready-now 9 · domestic breakouts 10 · youth sold 100% · wonderkid median ₹5.75 Cr [8.3, 2.0, 5.8] · hot median ₹3.60 Cr
+    Yashasvi Jaiswal (24) 89/94 → 90/94 Steady m14 perf 0.02
+    Sai Sudharsan (24) 88/92 → 88/91 Stalled m14 perf 0.01
+    Tilak Varma (23) 86/91 → 85/87 Stalled m14 perf -0.65
+    Vaibhav Suryavanshi (15) 77/93 → 85/96 Breakout m14 perf 0.34
+    Harshit Rana (24) 78/83 → 84/87 Domestic breakout m3 perf —
+    Nitish Kumar Reddy (22) 80/86 → 84/88 Breakout m14 perf 0.10
+    Angkrish Raghuvanshi (20) 75/86 → 82/87 Breakout m14 perf 0.02
+    Riyan Parag (24) 80/86 → 82/86 Rising m8 perf 0.16
+    Prashant Veer (20) 70/84 → 80/90 Breakout m12 perf 1.21
+    Mayank Yadav (23) 78/87 → 79/86 Steady m12 perf 0.02
+    Raj Angad Bawa (23) 68/76 → 78/81 Domestic breakout m0 perf —
+    Ayush Mhatre (19) 74/88 → 78/88 Breakout m14 perf 0.26
+    Abhishek Porel (23) 75/85 → 77/82 Rising m14 perf -0.47
+    Nehal Wadhera (24) 75/79 → 76/78 Steady m14 perf -0.69
+    Ashwani Kumar (24) 70/77 → 76/81 Breakout m10 perf 0.62
+  Mini auction 2028 money: spent 43% of available · left per team ₹[23.1, 17.2, 37.3, 0.6, 13.8, 12.3, 1.5, 22.2, 20.1, 33.6] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: 0
+  Mini auction 2028: wonderkids 2 · hot prospects 8 · ready-now 9 · domestic breakouts 11 · youth sold 100% · wonderkid median ₹5.60 Cr [9.0, 2.2] · hot median ₹1.70 Cr
 
--- Season 2027 (year 2) --
-  IPL-relevant pool: 90+ 7 · 85-89 33 · 80-84 58 · 75-79 81 · 70-74 76 · <70 42 · mean 76.49
-  Progression → 2028: Breakout 7 · Rising 23 · Stalled 21 · Bust 5 · Domestic breakout 14 · stall rate 20%
-  Strong young (n=2): +6.0 OVR, +2.5 POT · poor (n=2): 1.0 OVR, -1.5 POT · idle (n=37): +0.9 OVR
+-- Season 2028 (year 2) --
+  IPL-relevant pool: 90+ 7 · 85-89 34 · 80-84 57 · 75-79 80 · 70-74 78 · <70 46 · mean 76.36
+  Retirements → 2029: 27
+  Progression → 2029: Breakout 10 · Rising 24 · Stalled 14 · Bust 3 · Domestic breakout 15 · stall rate 12%
+  Strong young (n=3): +5.3 OVR, +4.7 POT · poor (n=7): 2.0 OVR, -2.4 POT · idle (n=36): +1.1 OVR
   Top 15 Indians ≤ 24:
-    Vaibhav Suryavanshi (16) 85/96 → 89/97 Breakout m14 perf 0.95
-    Tilak Varma (24) 86/88 → 86/88 Steady m14 perf 0.19
-    Ayush Mhatre (20) 83/94 → 86/96 Breakout m14 perf 0.46
-    Nishant Bisht (19) 78/94 → 86/94 Rising m14 perf -0.29
-    Nitish Kumar Reddy (23) 83/87 → 84/87 Steady m5 perf —
-    Angkrish Raghuvanshi (21) 81/86 → 82/86 Steady m13 perf -0.73
-    Vihaan Thakur (19) 73/85 → 82/87 Breakout m14 perf 0.37
-    Prashant Veer (21) 73/84 → 81/88 Breakout m14 perf 0.86
-    Aditya Rathore (17) 77/88 → 81/88 Rising m9 perf -0.39
-    Ritwik Bose (18) 75/82 → 81/87 Breakout m14 perf 0.52
-    Abhishek Porel (24) 79/88 → 80/85 Steady m7 perf -0.51
-    Atharva Baruah (22) 77/85 → 80/85 Rising m4 perf —
-    Imran Sinha (22) 72/76 → 80/83 Domestic breakout m0 perf —
-    Arjun Bose (22) 74/83 → 79/84 Breakout m7 perf 0.57
-    Mayank Yadav (24) 79/83 → 78/82 Stalled m14 perf -0.02
-  Mini auction 2028: wonderkids 2 · hot prospects 8 · ready-now 12 · domestic breakouts 11 · youth sold 100% · wonderkid median ₹5.55 Cr [8.5, 2.6] · hot median ₹1.35 Cr
+    Vaibhav Suryavanshi (16) 85/96 → 89/97 Breakout m14 perf 0.53
+    Tilak Varma (24) 85/87 → 85/87 Steady m14 perf -0.38
+    Ayush Mhatre (20) 78/88 → 85/94 Breakout m14 perf 1.50
+    Prashant Veer (21) 80/90 → 85/90 Breakout m14 perf 0.28
+    Vihaan Tyagi (18) 78/95 → 85/92 Rising m14 perf -1.00
+    Angkrish Raghuvanshi (21) 82/87 → 84/88 Rising m14 perf 0.21
+    Nitish Kumar Reddy (23) 84/88 → 84/88 Steady m14 perf -0.20
+    Lalit Rao (24) 77/82 → 84/88 Breakout m8 perf 1.05
+    Mayank Bose (21) 77/83 → 81/85 Breakout m14 perf 0.40
+    Mayank Yadav (24) 79/86 → 80/82 Steady m10 perf -0.62
+    Arjun Saxena (22) 80/84 → 80/84 Bust m0 perf —
+    Ishaan Naik (21) 70/83 → 79/86 Domestic breakout m0 perf —
+    Zaid Qureshi (23) 77/82 → 79/82 Rising m5 perf -0.31
+    Imran Gaikwad (19) 70/81 → 79/83 Domestic breakout m0 perf —
+    Abhishek Porel (24) 77/82 → 78/80 Steady m0 perf —
+  Mini auction 2029 money: spent 46% of available · left per team ₹[11.7, 25.1, 39.3, 5.2, 19.3, 24.0, 25.6, 38.9, 22.1, 23.8] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: 0
+  Mini auction 2029: wonderkids 2 · hot prospects 8 · ready-now 11 · domestic breakouts 10 · youth sold 90% · wonderkid median ₹5.15 Cr [3.8, 6.5] · hot median ₹2.80 Cr
 
--- Season 2028 (year 3) --
-  IPL-relevant pool: 90+ 6 · 85-89 34 · 80-84 56 · 75-79 80 · 70-74 91 · <70 38 · mean 76.50
-  Progression → 2029: Breakout 11 · Rising 18 · Stalled 12 · Bust 2 · Domestic breakout 13 · stall rate 11%
-  Strong young (n=2): +4.0 OVR, +1.5 POT · poor (n=7): 2.1 OVR, -2.1 POT · idle (n=16): +1.1 OVR
+-- Season 2029 (year 3) --
+  IPL-relevant pool: 90+ 8 · 85-89 36 · 80-84 53 · 75-79 87 · 70-74 78 · <70 45 · mean 76.61
+  Retirements → 2030: 24
+  Progression → 2030: Breakout 5 · Rising 24 · Stalled 16 · Bust 2 · Domestic breakout 7 · stall rate 14%
+  Strong young (n=3): +4.0 OVR, +3.7 POT · poor (n=7): 1.7 OVR, -1.3 POT · idle (n=24): +0.9 OVR
   Top 15 Indians ≤ 24:
-    Vaibhav Suryavanshi (17) 89/97 → 92/97 Breakout m14 perf 0.76
-    Ayush Mhatre (21) 86/96 → 88/96 Rising m14 perf 0.29
-    Nishant Bisht (20) 86/94 → 87/94 Steady m14 perf -0.27
-    Ritwik Bose (19) 81/87 → 86/91 Breakout m14 perf 0.33
-    Nitish Kumar Reddy (24) 84/87 → 85/87 Steady m6 perf 0.01
-    Prashant Veer (22) 81/88 → 85/90 Breakout m14 perf 0.33
-    Vihaan Thakur (20) 82/87 → 85/90 Breakout m14 perf 0.60
-    Vihaan Tyagi (18) 78/95 → 85/92 Rising m14 perf -0.61
-    J Kousik (24) 76/83 → 84/88 Domestic breakout m1 perf —
-    Aditya Rathore (18) 81/88 → 83/89 Rising m8 perf -0.88
-    Arjun Bose (23) 79/84 → 82/84 Breakout m14 perf 0.29
-    Angkrish Raghuvanshi (22) 82/86 → 81/85 Bust m10 perf -1.00
-    Yash Pillai (24) 78/80 → 81/83 Breakout m14 perf 0.42
-    Atharva Baruah (23) 80/85 → 80/82 Stalled m7 perf -0.52
-    Imran Sinha (23) 80/83 → 80/83 Steady m6 perf —
-  Mini auction 2029: wonderkids 2 · hot prospects 8 · ready-now 11 · domestic breakouts 7 · youth sold 90% · wonderkid median ₹5.15 Cr [3.8, 6.5] · hot median ₹2.60 Cr
+    Vaibhav Suryavanshi (17) 89/97 → 90/97 Steady m14 perf -0.09
+    Ayush Mhatre (21) 85/94 → 89/97 Breakout m14 perf 0.98
+    Angkrish Raghuvanshi (22) 84/88 → 86/90 Rising m14 perf 0.39
+    Prashant Veer (22) 85/90 → 86/90 Steady m14 perf -0.11
+    Vihaan Tyagi (19) 85/92 → 86/91 Steady m14 perf -0.77
+    Nitish Kumar Reddy (24) 84/88 → 85/88 Steady m14 perf -0.05
+    Arjun Saxena (23) 80/84 → 84/89 Breakout m7 perf 0.96
+    Srinath Mishra (16) 75/93 → 83/93 Rising m5 perf —
+    Pratham Hegde (22) 78/86 → 82/86 Breakout m14 perf 0.04
+    Mayank Bose (22) 81/85 → 82/86 Steady m14 perf -0.51
+    Vignesh Kadam (16) 77/92 → 82/88 Rising m14 perf -1.00
+    Rakesh Sahoo (20) 73/81 → 81/84 Domestic breakout m0 perf —
+    Arnab Gupta (21) 78/85 → 81/85 Rising m6 perf 0.20
+    Ishaan Naik (22) 79/86 → 81/85 Rising m8 perf -0.71
+    Rohan Iyer (24) 80/82 → 81/83 Steady m14 perf 0.06
+  Mega auction 2030 money: spent 97% of available · left per team ₹[3.5, 2.5, 0.3, 4.1, 1.8, 2.3, 2.9, 2.6, 1.8, 1.6] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: 0
 
--- Season 2029 (year 4) --
-  IPL-relevant pool: 90+ 8 · 85-89 34 · 80-84 52 · 75-79 95 · 70-74 89 · <70 28 · mean 76.88
-  Indians ≤23 and <76 at season 1 who are ≥80 by season 4: 5
+-- Season 2030 (year 4) --
+  IPL-relevant pool: 90+ 10 · 85-89 34 · 80-84 59 · 75-79 100 · 70-74 77 · <70 16 · mean 77.63
+  Retirements → 2031: 35
+  Progression → 2031: Breakout 12 · Rising 16 · Stalled 8 · Bust 1 · Domestic breakout 15 · stall rate 7%
+  Strong young (n=3): +5.0 OVR, +3.3 POT · poor (n=8): 1.6 OVR, -1.8 POT · idle (n=18): +0.8 OVR
+  Top 15 Indians ≤ 24:
+    Ayush Mhatre (22) 89/97 → 92/97 Breakout m14 perf 1.50
+    Vaibhav Suryavanshi (18) 90/97 → 91/97 Steady m14 perf -0.12
+    Angkrish Raghuvanshi (23) 86/90 → 89/95 Breakout m14 perf 0.93
+    Prashant Veer (23) 86/90 → 87/90 Steady m14 perf -0.02
+    Vihaan Tyagi (20) 86/91 → 87/92 Steady m14 perf -0.88
+    Arjun Saxena (24) 84/89 → 87/92 Breakout m14 perf 0.63
+    Srinath Mishra (17) 83/93 → 86/92 Rising m14 perf -0.98
+    Mayank Bose (23) 82/86 → 85/87 Rising m11 perf 0.23
+    Vignesh Kadam (17) 82/88 → 84/90 Rising m14 perf -0.38
+    Subhankar Goswami (19) 76/94 → 84/94 Rising m14 perf -0.33
+    Zaid Goswami (20) 75/86 → 84/91 Breakout m14 perf 0.94
+    Chirag Pawar (20) 75/88 → 83/88 Breakout m14 perf 0.08
+    Ritwik Dhillon (24) 76/88 → 83/92 Breakout m14 perf 0.81
+    Dhruv Sharma (23) 75/79 → 83/86 Domestic breakout m0 perf —
+    Imran Gaikwad (21) 80/85 → 83/87 Breakout m14 perf 0.31
+  Mini auction 2031 money: spent 45% of available · left per team ₹[28.5, 53.7, 26.6, 13.3, 37.0, 17.4, 40.0, 17.8, 24.6, 33.6] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: 2 — Raj Angad Bawa 27 78(peak 79) ₹9.5Cr Uncapped | Jayant Yadav 26 78(peak 80) ₹8.5Cr Capped
+  Mini auction 2031: wonderkids 4 · hot prospects 5 · ready-now 18 · domestic breakouts 10 · youth sold 100% · wonderkid median ₹3.40 Cr [3.2, 3.6, 5.3, 0.3] · hot median ₹0.30 Cr
+
+-- Season 2031 (year 5) --
+  IPL-relevant pool: 90+ 12 · 85-89 32 · 80-84 58 · 75-79 108 · 70-74 80 · <70 16 · mean 77.65
+  Retirements → 2032: 34
+  Progression → 2032: Breakout 5 · Rising 17 · Stalled 16 · Bust 4 · Domestic breakout 10 · stall rate 14%
+  Strong young (n=2): +2.5 OVR, +3.0 POT · poor (n=9): 1.4 OVR, -1.2 POT · idle (n=17): +0.9 OVR
+  Top 15 Indians ≤ 24:
+    Ayush Mhatre (23) 92/97 → 93/97 Steady m14 perf 1.00
+    Vaibhav Suryavanshi (19) 91/97 → 91/97 Steady m14 perf 0.29
+    Angkrish Raghuvanshi (24) 89/95 → 89/91 Stalled m14 perf -0.50
+    Srinath Mishra (18) 86/92 → 89/95 Breakout m14 perf 0.46
+    Prashant Veer (24) 87/90 → 87/90 Steady m14 perf 0.24
+    Vihaan Tyagi (21) 87/92 → 87/91 Stalled m14 perf -0.73
+    Subhankar Goswami (20) 84/94 → 87/94 Rising m14 perf 0.09
+    Mayank Bose (24) 85/87 → 86/88 Steady m13 perf 0.27
+    Atharva Verma (20) 83/89 → 86/91 Breakout m14 perf 0.55
+    Zaid Goswami (21) 84/91 → 86/91 Rising m14 perf 0.19
+    Vignesh Kadam (18) 84/90 → 85/91 Steady m14 perf -0.54
+    Balaji Rao (18) 81/95 → 85/92 Rising m14 perf -0.92
+    Siddharth Naidu (19) 81/87 → 85/90 Breakout m14 perf 0.00
+    Chirag Pawar (21) 83/88 → 84/88 Steady m14 perf -0.22
+    Dhruv Sharma (24) 83/86 → 84/86 Steady m14 perf 0.04
+  Mini auction 2032 money: spent 31% of available · left per team ₹[36.1, 53.5, 28.8, 42.1, 65.1, 36.6, 47.6, 49.9, 21.9, 40.0] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: 1 — Jayant Yadav 27 78(peak 80) ₹11.0Cr Capped
+  Mini auction 2032: wonderkids 2 · hot prospects 8 · ready-now 23 · domestic breakouts 6 · youth sold 60% · wonderkid median ₹5.25 Cr [2.0, 8.5] · hot median ₹3.10 Cr
+
+-- Season 2032 (year 6) --
+  IPL-relevant pool: 90+ 13 · 85-89 36 · 80-84 62 · 75-79 102 · 70-74 72 · <70 19 · mean 77.93
+  Indians ≤23 and <76 at season 1 who are ≥80 by season 4: 4
 
 ================ PASS / FAIL (averaged over seeds 1, 7, 42, 99, 2026) ================
-✅ PASS  Rating spread at start of season 1               90+ 7.0 · 85-89 28.0 · 80-84 70.0 · 75-79 70.0 · 70-74 54.2 · <70 50.8 (n 280)
-❌ FAIL  Rating spread at start of season 2               90+ 6.8 · 85-89 31.2 · 80-84 61.0 · 75-79 80.8 · 70-74 68.4 · <70 44.2 (n 292)  (off: 70-74)
-❌ FAIL  Rating spread at start of season 3               90+ 7.4 · 85-89 30.6 · 80-84 60.4 · 75-79 92.6 · 70-74 74.4 · <70 38.2 (n 304)  (off: 75-79, 70-74)
-❌ FAIL  Rating spread at start of season 4               90+ 8.4 · 85-89 30.2 · 80-84 61.2 · 75-79 96.0 · 70-74 77.8 · <70 30.8 (n 304)  (off: 75-79, 70-74)
-✅ PASS  League mean drift ≤ ±1.0                         S1→S4 0.62, max range 0.62
-✅ PASS  Strong young season: +5..+10 OVR                 mean +6.2 (n=37), 73% in range
-✅ PASS  Strong young season: +3..+6 POT                  mean +3.6
-✅ PASS  Breakout Indian youngsters per season 8–15       mean 9.1 [6, 11, 9, 5, 9, 11, 7, 7, 11, 10, 14, 7, 8, 13, 9]
-❌ FAIL  ≥12 young Indians (<76 at S1) reach 80+ by S4    mean 7.2 [5, 7, 5, 11, 8]
-✅ PASS  Poor young season: −2..−4 POT, little growth     POT -2.3, OVR 1.9 (n=71)
-✅ PASS  Prospects who stall 10–20%                       16.5%
-✅ PASS  0-match prospects: +0..+3, no breakouts          mean +1.10 (n=537), breakouts 0
-✅ PASS  Domestic breakouts per off-season 8–15           mean 13.6 [15, 15, 11, 15, 12, 10, 15, 14, 13, 15, 15, 10, 14, 15, 15]
-✅ PASS  Mini pool: 2–4 wonderkids                        mean 2.7
-✅ PASS  Mini pool: 6–10 hot prospects                    mean 8.0
-✅ PASS  Mini pool: 8–12 ready-now performers             mean 10.0
-✅ PASS  Mini pool: 8–15 domestic breakouts               mean 9.1
-✅ PASS  ≥80% of wonderkids + hot prospects sold          94%
-✅ PASS  Wonderkid prices mostly ₹1–6 Cr                  median ₹4.60 Cr, 67% in band (n=39)
+(progression criteria: first cycle, 3 progressions; money criteria: both cycles)
+✅ PASS  Rating spread at start of season 1               90+ 7.0 · 85-89 28.0 · 80-84 70.0 · 75-79 71.6 · 70-74 63.2 · <70 48.0 (n 288)
+❌ FAIL  Rating spread at start of season 2               90+ 7.0 · 85-89 30.4 · 80-84 63.4 · 75-79 83.0 · 70-74 72.0 · <70 46.2 (n 302)  (off: 70-74)
+❌ FAIL  Rating spread at start of season 3               90+ 6.8 · 85-89 33.0 · 80-84 60.0 · 75-79 92.2 · 70-74 72.0 · <70 43.2 (n 307)  (off: 85-89, 75-79, 70-74)
+❌ FAIL  Rating spread at start of season 4               90+ 8.4 · 85-89 32.2 · 80-84 60.2 · 75-79 99.8 · 70-74 68.0 · <70 16.0 (n 285)  (off: 75-79, 70-74)
+❌ FAIL  League mean drift ≤ ±1.0                         S1→S4 1.50, max range 1.67
+✅ PASS  Strong young season: +5..+10 OVR                 mean +6.2 (n=38), 76% in range
+✅ PASS  Strong young season: +3..+6 POT                  mean +4.2
+✅ PASS  Breakout Indian youngsters per season 8–15       mean 8.7 [9, 10, 12, 10, 11, 5, 12, 10, 5, 7, 14, 7, 6, 6, 7]
+❌ FAIL  ≥12 young Indians (<76 at S1) reach 80+ by S4    mean 8.4 [9, 9, 4, 13, 7]
+❌ FAIL  Poor young season: −2..−4 POT, little growth     POT -2.4, OVR 2.2 (n=73)
+✅ PASS  Prospects who stall 10–20%                       15.5%
+✅ PASS  0-match prospects: +0..+3, no breakouts          mean +1.12 (n=556), breakouts 0
+✅ PASS  Domestic breakouts per off-season 8–15           mean 13.4 [15, 11, 12, 15, 13, 15, 15, 15, 7, 15, 10, 13, 15, 15, 15]
+✅ PASS  Mini pool: 2–4 wonderkids                        mean 2.5
+✅ PASS  Mini pool: 6–10 hot prospects                    mean 7.8
+❌ FAIL  Mini pool: 8–12 ready-now performers             mean 13.3
+✅ PASS  Mini pool: 8–15 domestic breakouts               mean 8.7
+✅ PASS  ≥80% of wonderkids + hot prospects sold          88%
+✅ PASS  Wonderkid prices mostly ₹1–6 Cr                  median ₹3.60 Cr, 81% in band (n=47)
+❌ FAIL  Mega auctions: no team keeps ₹10 Cr+             mean left ₹3.2 Cr, max ₹12.3 Cr, teams ≥₹10 Cr 2/100, spent 95%
+✅ PASS  ≤78 OVR (26+) at star money (₹6 Cr per ₹120 Cr purse), megas per mega 0.8
+✅ PASS  ≤78 OVR (26+) at star money, minis               per mini 0.8, mini spend 45%
+✅ PASS  No ≤74 OVR player sold for ₹5 Cr+ (any auction)  total 0 across 30 auctions
+✅ PASS  Retirements per off-season (info)                mean 26.8 [14, 18, 19, 35, 20, 15, 17, 21, 31, 23, 15, 27, 24, 35, 34, 21, 26, 40, 36, 29, 19, 28, 30, 48, 45]
 
-15/19 criteria pass · 15s
+16/24 criteria pass · 30s
 PROGRESSION_TUNING.domestic = {"cap":15,"baseChance":0.07,"headroomBonus":0.04,"youthBonus":0.02,"minAge":19,"maxAge":27,"lateBloomerMaxAge":29,"jump":[5,10],"potGain":[2,5],"ovrCap":84}

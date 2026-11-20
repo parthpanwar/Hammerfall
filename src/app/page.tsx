@@ -20,6 +20,8 @@ import { TransactionsView } from '@/components/transactions/TransactionsView';
 import { MiniReleaseView } from '@/components/retention/MiniReleaseView';
 import { auctionTypeFor } from '@/lib/flow/season-flow';
 import { worldVars } from '@/components/mynba/primitives';
+import { SeasonTransitionModal } from '@/components/career/SeasonTransitionModal';
+import { LoadingScreen } from '@/components/fx/LoadingScreen';
 
 const subscribeNoop = () => () => {};
 
@@ -42,16 +44,12 @@ export default function Home() {
     Object.entries(vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
   }, [worldId]);
 
-  if (!mounted) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
-        <div className="m-display text-4xl">IPL Dynasty</div>
-        <div className="w-40 m-meter"><span style={{ width: '60%', background: 'var(--m-ink)' }} /></div>
-      </div>
-    );
-  }
-
+  // The loader covers the first paint (server render included) and lifts itself.
+  // It stays at the same spot in the tree so hydration doesn't restart it.
   return (
+    <>
+    <LoadingScreen />
+    {mounted && (
     <div
       className="min-h-screen bg-[var(--m-bg)] text-[var(--m-text)] flex flex-col transition-colors duration-500"
       style={worldVars(worldId)}
@@ -80,6 +78,9 @@ export default function Home() {
         {phase === 'TradeCenter' && <TradeCenter />}
         {phase === 'Transactions' && <TransactionsView />}
       </main>
+      {phase !== 'MainMenu' && <SeasonTransitionModal />}
     </div>
+    )}
+    </>
   );
 }

@@ -51,7 +51,7 @@ export interface StructuredDecisionLog {
 }
 
 // Bounded ring buffer per auction session (keeps last 500 decisions)
-const MAX_LOGS_PER_SESSION = 500;
+const MAX_LOGS_PER_SESSION = Number((typeof process !== "undefined" && process.env?.CPU_LOG_MAX) || 500);
 const sessionDecisionLogs: Map<string, StructuredDecisionLog[]> = new Map();
 
 /** Record a new CPU decision in the structured log. */

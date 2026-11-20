@@ -151,7 +151,8 @@ export function executeCpuPreAuctionDecisions(
     const { remainingPurse } = calculateFranchiseUpcomingPurse(
       currentFranchise,
       currentFranchise.players,
-      seasonYear
+      seasonYear,
+      currentFranchise.totalPurse || undefined
     );
     currentFranchise.remainingPurse = remainingPurse;
   } else {

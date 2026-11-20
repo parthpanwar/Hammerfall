@@ -22,9 +22,19 @@ export function RegistrationDashboard() {
     updateHumanShortlist,
     removeHumanShortlist,
     setPhase,
+    compileAuctionPool,
     currentSeason,
     settings,
   } = useGameStore();
+  const [skipping, setSkipping] = useState(false);
+  // Scouting and the set preview are optional: compile the list and go straight to bidding.
+  const skipToAuction = () => {
+    setSkipping(true);
+    setTimeout(() => {
+      compileAuctionPool();
+      setPhase('Auction');
+    }, 30);
+  };
   const [scouting, setScouting] = useState<Player | null>(null);
   const human = franchises.find((f) => f.id === humanFranchiseId);
   const shortlist = franchiseShortlists[humanFranchiseId]?.entries || {};
@@ -48,14 +58,18 @@ export function RegistrationDashboard() {
         title="The Player Pool"
         subtitle={
           <>
-            {s.total} players are registered for the IPL {currentSeason} {isMega ? 'mega' : 'mini'} auction, held in {isMega ? 'November' : 'December'} {currentSeason - 1}. Tag the ones you want with A, B or C
-            (or the star) — your shortlist carries into the Scouting room and the auction.
+            {s.total} players enter the {isMega ? 'mega' : 'mini'} auction ({isMega ? 'Nov' : 'Dec'} {currentSeason - 1}). Tag the ones you want, or skip straight to the auction.
           </>
         }
         right={
-          <MButton variant="primary" size="lg" onClick={() => setPhase('Scouting')}>
-            Scouting room <ChevronRight className="w-4 h-4" />
-          </MButton>
+          <>
+            <MButton variant="ghost" onClick={skipToAuction} disabled={skipping}>
+              {skipping ? 'Building sets…' : 'Skip to auction'}
+            </MButton>
+            <MButton variant="primary" size="lg" onClick={() => setPhase('Scouting')}>
+              Scouting room <ChevronRight className="w-4 h-4" />
+            </MButton>
+          </>
         }
       />
 

@@ -1,7 +1,8 @@
 // ============================================================
 // IPL DYNASTY - Campaign cycle test
-// 2026 mega → 2027 mini → 2028 mini → campaign ends. Checks release-based
-// mini years, the small mini pool, legal squads and the transaction log.
+// Two cycles: 2026 mega → 2027, 2028 mini → 2029 mega → 2030, 2031 mini → end.
+// Checks release-based mini years, the small mini pool, the second mega's
+// retentions under the grown purse, legal squads and the transaction log.
 // ============================================================
 
 import { useGameStore } from '../store/game-store';
@@ -12,6 +13,8 @@ import { RETENTION_RULES_2026 } from '../data/retention-rules';
 import { createSeededRandom } from '../utils/random';
 import { simulateRemainingAuction } from '../engines/auction/auction-runner';
 import { auctionTypeFor, CAMPAIGN_SEASONS } from './season-flow';
+import { getMegaRetentionRules } from '../data/retention-rules';
+import { getLeaguePurseForSeason } from '../engines/career/contract-engine';
 
 {
   const seeded = createSeededRandom(Number(process.env.TEST_SEED || 11));
@@ -73,7 +76,33 @@ runAuction();
 assert(squadsLegal(), 'Squads legal after the mega auction');
 assert(log().filter((t) => t.season === 2026 && t.type === 'Signed').length > 100, 'Mega auction signings logged');
 
-for (const season of [2027, 2028]) {
+for (const season of [2027, 2028, 2029, 2030, 2031]) {
+  if (auctionTypeFor(season, S().settings) === 'Mega') {
+    console.log(`\n=== Year ${season - 2025}: ${season} mega auction (second cycle) ===`);
+    S().advanceSeason();
+    assert(S().currentSeason === season, `${season} reached`);
+    const purse = S().franchises[0].totalPurse;
+    assert(purse === getLeaguePurseForSeason(season, S().settings) && purse > 12500, `purse grew for the second mega (₹${purse / 100} Cr)`);
+    assert(S().franchises.every((f) => f.players.length >= 15), 'CPU squads reach Retention Day intact (no silent pre-retention)');
+    const rules = getMegaRetentionRules(purse);
+    const rng = createSeededRandom(season);
+    const all = [];
+    for (const f of S().franchises) {
+      const d = cpuRetentionDecisions(f, rules, rng);
+      all.push(...d);
+      const kept = f.players.filter((p) => d.some((x) => x.playerId === p.id));
+      S().updateFranchise(f.id, { players: kept, retainedPlayers: kept, remainingPurse: purse - d.reduce((a, b) => a + b.cost, 0) });
+    }
+    S().setRetentionDecisions(all);
+    S().completeRetention();
+    S().initializeRegistration();
+    assert(S().registrationPool.length > 250, `second mega pool is deep (${S().registrationPool.length})`);
+    runAuction();
+    assert(squadsLegal(), `Squads legal after the ${season} mega auction`);
+    // (CPU purse use is measured by scripts/calibrate_progression.ts with all-CPU leagues;
+    // here the human sits out holding ₹100 Cr+, which distorts the room's price index.)
+    continue;
+  }
   console.log(`\n=== Year ${season - 2025}: ${season} mini auction ===`);
   const prevRosters = new Map(S().franchises.map((f) => [f.id, f.players.map((p) => p.id)]));
   S().advanceSeason();
@@ -113,7 +142,7 @@ for (const season of [2027, 2028]) {
 
 console.log('\n=== End of cycle ===');
 S().advanceSeason();
-assert(S().currentSeason === 2028, `No season ${2026 + CAMPAIGN_SEASONS}: the campaign ends after ${CAMPAIGN_SEASONS} seasons`);
+assert(S().currentSeason === 2031, `No season ${2026 + CAMPAIGN_SEASONS}: the campaign ends after ${CAMPAIGN_SEASONS} seasons`);
 assert(new Set(log().map((t) => t.id)).size === log().length, 'Transaction log has no duplicates');
 
 console.log(`\n🎉 Campaign cycle: ${passed} assertions passed`);

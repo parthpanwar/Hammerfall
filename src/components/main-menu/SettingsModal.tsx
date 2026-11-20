@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { NeoModal, NeoButton } from '@/components/neobrutalism';
 import { CPUDifficulty, AuctionPace } from '@/lib/types/game';
+import { difficultyGuide } from '@/lib/data/difficulty-guide';
 import { Zap, Layers, Shield, BookOpen, Volume2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface SettingsModalProps {
@@ -103,10 +104,7 @@ export function SettingsModal({
               ))}
             </div>
             <p className="text-[11px] text-[var(--m-dim)] mt-2 font-medium">
-              {difficulty === 'Easy' && 'CPU franchises bid conservatively with low risk tolerance.'}
-              {difficulty === 'Normal' && 'Standard ML valuation weighting balanced with real IPL historical spending habits.'}
-              {difficulty === 'Hard' && 'Dynamic opponent modeling, tactical inflation bidding and aggressive shortlisting.'}
-              {difficulty === 'Expert' && 'Monte Carlo budget forecasting with RTM optimization and cutthroat role denial.'}
+              {difficultyGuide(difficulty).short} {difficultyGuide(difficulty).example}
             </p>
           </div>
 

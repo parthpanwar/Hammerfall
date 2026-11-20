@@ -554,6 +554,66 @@ input[type="range"] {
   animation: m-drift 6s ease-in-out infinite alternate;
 }
 
+/* ---------- FX: team eyes, iso cubes, loader ---------- */
+/* Pupils follow the pointer (vars set from JS). */
+.fx-pupil {
+  transform: translate(calc(-50% + var(--look-x, 0px)), calc(-50% + var(--look-y, 0px)));
+  transition: transform 0.18s var(--ease-out);
+}
+/* Each eye blinks on its own clock. */
+@keyframes fx-blink {
+  0%, 94%, 100% { transform: scaleY(1); }
+  97% { transform: scaleY(0.08); }
+}
+.fx-eye { animation: fx-blink 6s ease-in-out infinite; transform-origin: center; }
+.group:hover .fx-eye { animation-play-state: paused; }
+/* Eyes pop open one by one when the tray mounts. */
+@keyframes fx-eye-in {
+  from { opacity: 0; transform: translateY(-14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fx-eye-cell { animation: fx-eye-in 0.55s cubic-bezier(.2,.9,.3,1.25) both; }
+
+/* Isometric cubes */
+@keyframes fx-cube-drop {
+  0% { opacity: 0; transform: translateY(-140px); }
+  55% { opacity: 1; transform: translateY(6px); }
+  75% { transform: translateY(-3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.fx-cube-drop { animation: fx-cube-drop 0.6s cubic-bezier(.3,.7,.4,1) both; }
+@keyframes fx-cube-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-5px); }
+}
+.fx-cube-bob { animation: fx-cube-bob 3.4s ease-in-out infinite alternate; }
+
+/* Loader */
+@keyframes fx-curtain {
+  to { transform: translateY(-100%); }
+}
+.fx-curtain { animation: fx-curtain 0.7s cubic-bezier(.7,0,.2,1) forwards; }
+@keyframes fx-fade-out { to { opacity: 0; visibility: hidden; } }
+.fx-fade-out { animation: fx-fade-out 0.35s ease forwards; }
+@keyframes fx-shadow-grow {
+  from { transform: scaleX(0.2); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+.fx-shadow { animation: fx-shadow-grow 1.4s var(--ease-out) both; transform-origin: center; }
+@keyframes fx-gavel {
+  0%, 100% { transform: rotate(-28deg); }
+  40% { transform: rotate(8deg); }
+  55% { transform: rotate(-4deg); }
+}
+.fx-gavel { animation: fx-gavel 0.5s cubic-bezier(.5,0,.3,1) both; transform-origin: 80% 80%; }
+@keyframes fx-wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+
+.m-tile:hover .fx-wiggle-on-hover { animation: fx-wiggle 0.5s ease-in-out; }
+
 /* Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
@@ -576,7 +636,10 @@ input[type="range"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .m-ticker-track, .m-rise, .m-stamp, .m-bid-flash, .m-drift { animation: none; }
+  .m-ticker-track, .m-rise, .m-stamp, .m-bid-flash, .m-drift,
+  .fx-eye, .fx-eye-cell, .fx-cube-drop, .fx-cube-bob, .fx-shadow, .fx-gavel,
+  .m-tile:hover .fx-wiggle-on-hover { animation: none; }
+  .fx-pupil { transition: none; }
   .m-tile[data-active="true"] { transform: none; }
   html, body { transition: none; }
 }

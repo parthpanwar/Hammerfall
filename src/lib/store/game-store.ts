@@ -264,6 +264,9 @@ interface GameStore extends GameState {
   loadFromSlot: (slotNumber: number) => boolean;
   addSeasonSummary: (summary: SeasonSummary) => void;
   advanceSeason: () => void;
+  /** True right after a season advance, until the off-season recap slides are dismissed. */
+  seasonRecapPending?: boolean;
+  dismissSeasonRecap: () => void;
 
   // Save
   saveGame: () => void;
@@ -577,6 +580,10 @@ export const useGameStore = create<GameStore>()(
           playingXIs: {},
           playoffFixtures: [],
           seasonAwards: [],
+          // A new campaign starts with an empty roll of honour.
+          seasonHistory: [],
+          careerYear: 1,
+          seasonRecapPending: false,
           createdAt: now,
           updatedAt: now,
           savedAt: now,
@@ -1102,7 +1109,8 @@ export const useGameStore = create<GameStore>()(
 
       addSeasonSummary: (summary) =>
         set((state) => ({
-          seasonHistory: [...state.seasonHistory, summary],
+          // One row per season: replaying the Final must not add a duplicate.
+          seasonHistory: [...state.seasonHistory.filter((s) => s.year !== summary.year), summary],
           updatedAt: Date.now(),
         })),
 
@@ -1170,9 +1178,13 @@ export const useGameStore = create<GameStore>()(
             transactions: addTransactions(state.careerState.transactions, releaseLog),
             cpuReleaseSeason: result.upcomingAuctionType === 'Mini' ? result.updatedGameState.currentSeason : undefined,
           },
+          // Show the off-season recap (growth, retirements) computed by this advance.
+          seasonRecapPending: true,
           updatedAt: Date.now(),
         });
       },
+
+      dismissSeasonRecap: () => set({ seasonRecapPending: false }),
 
       saveGame: () => {
         const state = get();
@@ -1229,6 +1241,7 @@ export const useGameStore = create<GameStore>()(
         playoffFixtures: state.playoffFixtures,
         seasonAwards: state.seasonAwards,
         seasonHistory: state.seasonHistory,
+        seasonRecapPending: state.seasonRecapPending,
         careerYear: state.careerYear,
         createdAt: state.createdAt,
         updatedAt: state.updatedAt,

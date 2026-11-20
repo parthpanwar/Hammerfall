@@ -1,14 +1,14 @@
 // ============================================================
 // IPL DYNASTY - Real IPL timeline test
 // Real IPL 2026 squads → IPL 2027 mini (last year of the 2025–27 cycle)
-// → IPL 2028 mega → 2029, 2030 mini → campaign ends.
+// → IPL 2028 mega → 2029, 2030 mini → IPL 2031 mega → 2032, 2033 mini → end.
 // ============================================================
 
 import { useGameStore } from '../store/game-store';
 import { FRANCHISES } from '../data/franchises';
 import { GLOBAL_PLAYERS } from '../data/players';
 import { cpuRetentionDecisions } from '../engines/retention-engine';
-import { RETENTION_RULES_2026 } from '../data/retention-rules';
+import { getMegaRetentionRules } from '../data/retention-rules';
 import { createSeededRandom } from '../utils/random';
 import { simulateRemainingAuction } from '../engines/auction/auction-runner';
 import { getLeaguePurseForSeason } from '../engines/career/contract-engine';
@@ -60,7 +60,7 @@ S().initializeGame(
   FRANCHISES.map((f) => ({ ...f, totalPurse: purse, remainingPurse: purse })),
   GLOBAL_PLAYERS
 );
-assert(campaignLength(S().settings) === 4, 'Real timeline runs IPL 2027–2030 (4 seasons)');
+assert(campaignLength(S().settings) === 7, 'Real timeline runs IPL 2027–2033 (7 seasons, two full cycles after 2027)');
 assert(auctionTypeFor(2027, S().settings) === 'Mini', 'first window is a mini auction (Release Day)');
 const before = new Map(S().franchises.map((f) => [f.id, f.players.length]));
 const r = S().confirmMiniReleases([]);
@@ -73,14 +73,17 @@ assert(S().registrationPool.length <= 140, `small mini pool (${S().registrationP
 runAuction();
 assert(legal(), 'squads legal after the IPL 2027 mini auction');
 
-console.log('\n=== IPL 2028 · mega ===');
-S().advanceSeason();
-assert(S().currentSeason === 2028 && auctionTypeFor(2028, S().settings) === 'Mega', 'IPL 2028 has a mega auction');
-{
-  const rng = createSeededRandom(9);
+function megaYear(season: number) {
+  console.log(`\n=== IPL ${season} · mega ===`);
+  S().advanceSeason();
+  assert(S().currentSeason === season && auctionTypeFor(season, S().settings) === 'Mega', `IPL ${season} has a mega auction`);
+  const purse = S().franchises[0].totalPurse;
+  assert(purse === getLeaguePurseForSeason(season), `IPL ${season} purse follows the real trend (₹${purse / 100} Cr)`);
+  const rules = getMegaRetentionRules(purse);
+  const rng = createSeededRandom(season);
   const all = [];
   for (const f of S().franchises) {
-    const d = cpuRetentionDecisions(f, { ...RETENTION_RULES_2026, totalPurse: f.totalPurse }, rng);
+    const d = cpuRetentionDecisions(f, rules, rng);
     all.push(...d);
     const kept = f.players.filter((p) => d.some((x) => x.playerId === p.id));
     S().updateFranchise(f.id, { players: kept, retainedPlayers: kept, remainingPurse: f.totalPurse - d.reduce((a, b) => a + b.cost, 0) });
@@ -88,12 +91,12 @@ assert(S().currentSeason === 2028 && auctionTypeFor(2028, S().settings) === 'Meg
   S().setRetentionDecisions(all);
   S().completeRetention();
   S().initializeRegistration();
+  assert(S().registrationPool.length > 300, `mega pool is deep (${S().registrationPool.length})`);
+  runAuction();
+  assert(legal(), `squads legal after the IPL ${season} mega auction`);
 }
-assert(S().registrationPool.length > 300, `mega pool is deep (${S().registrationPool.length})`);
-runAuction();
-assert(legal(), 'squads legal after the IPL 2028 mega auction');
 
-for (const season of [2029, 2030]) {
+function miniYear(season: number) {
   console.log(`\n=== IPL ${season} · mini ===`);
   S().advanceSeason();
   assert(S().currentSeason === season && auctionTypeFor(season, S().settings) === 'Mini', `IPL ${season} has a mini auction`);
@@ -106,8 +109,15 @@ for (const season of [2029, 2030]) {
   assert(legal(), `squads legal after the IPL ${season} mini auction`);
 }
 
+megaYear(2028);
+miniYear(2029);
+miniYear(2030);
+megaYear(2031);
+miniYear(2032);
+miniYear(2033);
+
 console.log('\n=== End ===');
 S().advanceSeason();
-assert(S().currentSeason === 2030, 'campaign ends after IPL 2030');
+assert(S().currentSeason === 2033, 'campaign ends after IPL 2033');
 
 console.log(`\n🎉 Real IPL timeline: ${passed} assertions passed`);

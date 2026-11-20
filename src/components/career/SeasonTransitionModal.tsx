@@ -1,274 +1,167 @@
 'use client';
 
+// Off-season recap, shown right after a season advance. The advance is what
+// develops players and retires veterans, so these slides read the results of
+// the season that just ended (never the one before it).
+
 import React, { useState } from 'react';
+import { ArrowRight, TrendingDown, TrendingUp } from 'lucide-react';
 import { useGameStore } from '@/lib/store/game-store';
-import { formatPrice } from '@/lib/utils';
-import {
-  TrendingUp,
-  TrendingDown,
-  ArrowRight,
-  Sparkles,
-  AlertCircle,
-} from 'lucide-react';
-import type { SeasonTransitionStep } from '@/lib/types/career';
+import { getLeaguePurseForSeason } from '@/lib/engines/career/contract-engine';
 import { auctionTypeFor } from '@/lib/flow/season-flow';
+import { formatPrice } from '@/lib/utils';
+import { MButton, Modal, OvrBadge } from '@/components/mynba/primitives';
 
-interface SeasonTransitionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
+const STEPS = ['Growth', 'Retirements', 'Next season'] as const;
 
-export function SeasonTransitionModal({ isOpen, onClose }: SeasonTransitionModalProps) {
-  const {
-    currentSeason,
-    humanFranchiseId,
-    franchises,
-    careerState,
-    advanceSeason,
-    settings,
-    setPhase,
-  } = useGameStore();
+export function SeasonTransitionModal() {
+  const { seasonRecapPending, dismissSeasonRecap, currentSeason, humanFranchiseId, franchises, careerState, settings } = useGameStore();
+  const [step, setStep] = useState(0);
+  if (!seasonRecapPending) return null;
 
-  const [step, setStep] = useState<SeasonTransitionStep>('PLAYER_DEVELOPMENT');
-  const humanFranchise = franchises.find((f) => f.id === humanFranchiseId);
+  const endedSeason = currentSeason - 1;
+  const myIds = new Set((franchises.find((f) => f.id === humanFranchiseId)?.players ?? []).map((p) => p.id));
+  const growth = careerState.recentProgressionDeltas
+    .filter((d) => myIds.has(d.playerId))
+    .sort((a, b) => b.overallDelta - a.overallDelta);
+  const retirements = careerState.retirements.filter((r) => r.retirementSeason === endedSeason);
+  const myRetirements = retirements.filter((r) => r.lastFranchiseId === humanFranchiseId);
+  const isMega = auctionTypeFor(currentSeason, settings) === 'Mega';
+  const purse = getLeaguePurseForSeason(currentSeason, settings);
+  const prevPurse = getLeaguePurseForSeason(endedSeason, settings);
+  const risers = growth.filter((d) => d.overallDelta > 0).length;
+  const fallers = growth.filter((d) => d.overallDelta < 0).length;
 
-  if (!isOpen) return null;
-
-
-  const humanPlayers = humanFranchise?.players || [];
-  const progressionDeltas = careerState.recentProgressionDeltas.filter((d) =>
-    humanPlayers.some((p) => p.id === d.playerId)
-  );
-  const recentRetirements = careerState.retirements.filter(
-    (r) => r.retirementSeason === currentSeason
-  );
-
-  const nextSeason = currentSeason + 1;
-  const isMega = auctionTypeFor(nextSeason, settings) === 'Mega';
-
-  const handleCompleteAdvance = () => {
-    advanceSeason();
-    setPhase('Retention');
-    onClose();
+  const close = () => {
+    setStep(0);
+    dismissSeasonRecap();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="terminal-card w-full max-w-4xl max-h-[90vh] bg-[var(--m-panel)] rounded-2xl flex flex-col overflow-hidden border border-[var(--m-line)] shadow-2xl relative">
-        {/* Header Bar */}
-        <div className="p-5 border-b border-[var(--m-line)] bg-[var(--m-panel)] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Sparkles className="w-6 h-6 text-[var(--m-accent-ink)]" />
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-tight text-[var(--m-text)] font-heading">
-                Preparing IPL {nextSeason}
-              </h2>
-              <p className="text-xs text-[var(--m-dim)] font-medium">
-                Season {currentSeason} Conclusion &bull; Preparing for Season {nextSeason}
-              </p>
-            </div>
-          </div>
-          <div className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 text-xs font-bold">
-            {step === 'PLAYER_DEVELOPMENT' && 'Step 1 of 3 · Development'}
-            {step === 'RETIREMENTS' && 'Step 2 of 3 · Retirements'}
-            {step === 'AUCTION_PREP' && 'Step 3 of 3 · New season'}
-          </div>
-        </div>
-
-        {/* Modal Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6 bg-[var(--m-panel)]">
-          {step === 'PLAYER_DEVELOPMENT' && (
-            <div className="space-y-4">
-              <div className="text-center space-y-1">
-                <span className="telemetry-badge-sm bg-[var(--m-green)]/15 text-[var(--m-green)] border border-[var(--m-green)]/30 text-[11px] font-bold inline-block">
-                  PROGRESSION & AGING
-                </span>
-                <h3 className="text-2xl font-bold uppercase text-[var(--m-text)] font-heading">
-                  {humanFranchise?.shortName} Squad Development
-                </h3>
-                <p className="text-xs text-[var(--m-dim)] font-medium">
-                  Ratings have evolved probabilistically based on ML age curves, season game-time, and role ceilings.
-                </p>
-              </div>
-
-              <div className="terminal-card rounded-xl overflow-hidden max-h-72 overflow-y-auto border border-[var(--m-line)]">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-[var(--m-panel)] text-[var(--m-dim)] uppercase text-[10px] font-bold border-b border-[var(--m-line)]">
-                    <tr>
-                      <th className="py-2.5 px-3">Player</th>
-                      <th className="py-2.5 px-3">New Age</th>
-                      <th className="py-2.5 px-3">Previous OVR</th>
-                      <th className="py-2.5 px-3">New OVR</th>
-                      <th className="py-2.5 px-3">Delta</th>
-                      <th className="py-2.5 px-3">Development Note</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--m-line)]/50 font-medium">
-                    {progressionDeltas.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="py-6 text-center text-[var(--m-dim)]">
-                          Ratings update when you launch the new season. You will see who improved in the Franchise Office.
-                        </td>
-                      </tr>
-                    )}
-                    {progressionDeltas.map((d, idx) => (
-                      <tr key={d.playerId} className={idx % 2 === 0 ? 'bg-[var(--m-panel)]' : 'bg-[var(--m-panel)]'}>
-                        <td className="py-2 px-3 font-bold text-[var(--m-text)]">{d.playerName}</td>
-                        <td className="py-2 px-3 text-[var(--m-dim)] tabular-nums">{d.age}</td>
-                        <td className="py-2 px-3 text-[var(--m-dim)] tabular-nums">{d.previousOverall}</td>
-                        <td className="py-2 px-3 font-bold text-[var(--m-text)] tabular-nums">{d.newOverall}</td>
-                        <td className="py-2 px-3">
-                          {d.overallDelta > 0 ? (
-                            <span className="inline-flex items-center gap-0.5 text-[var(--m-green)] font-bold tabular-nums">
-                              <TrendingUp className="w-3.5 h-3.5" /> +{d.overallDelta}
-                            </span>
-                          ) : d.overallDelta < 0 ? (
-                            <span className="inline-flex items-center gap-0.5 text-[var(--m-red)] font-bold tabular-nums">
-                              <TrendingDown className="w-3.5 h-3.5" /> {d.overallDelta}
-                            </span>
-                          ) : (
-                            <span className="text-[var(--m-dim)] font-medium">&plusmn;0</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-[11px] text-[var(--m-dim)]">{d.progressionNote}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: RETIREMENTS */}
-          {step === 'RETIREMENTS' && (
-            <div className="space-y-4">
-              <div className="text-center space-y-1">
-                <span className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 text-[11px] font-bold inline-block">
-                  CAREER FAREWELLS
-                </span>
-                <h3 className="text-2xl font-bold uppercase text-[var(--m-text)] font-heading">
-                  League Retirements & Hall of Fame
-                </h3>
-                <p className="text-xs text-[var(--m-dim)] font-medium">
-                  Veteran cricketers who have announced their retirement. Full lifetime stats remain preserved in records.
-                </p>
-              </div>
-
-              {recentRetirements.length === 0 ? (
-                <div className="p-6 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] text-center text-[var(--m-dim)] font-medium text-xs">
-                  No players retired this season! All active veterans have confirmed participation for Season {nextSeason}.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto">
-                  {recentRetirements.map((r) => (
-                    <div key={r.playerId} className="p-4 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)]">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-[var(--m-text)] text-sm">{r.playerName}</span>
-                        {r.hallOfFame && (
-                          <span className="telemetry-badge-sm bg-[var(--m-gold)]/20 text-[var(--m-gold)] border border-[var(--m-gold)]/40 text-[10px] font-bold">
-                            HALL OF FAME
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-[var(--m-dim)] font-medium mt-1">
-                        Age {r.age} &bull; Reason: {r.reason}
-                      </div>
-                      <div className="mt-2 text-xs font-semibold text-[var(--m-text)] flex items-center gap-3">
-                        <span>{r.careerMatches} matches</span>
-                        <span className="text-[var(--m-gold)]">{r.careerRuns} runs</span>
-                        <span className="text-[var(--m-accent-ink)]">{r.careerWickets} wickets</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* STEP 4: AUCTION PREP & NEW SEASON */}
-          {step === 'AUCTION_PREP' && (
-            <div className="space-y-6">
-              <div className="text-center space-y-1">
-                <span className="telemetry-badge-sm bg-[var(--m-accent-ink)]/15 text-[var(--m-accent-ink)] border border-[var(--m-accent-ink)]/30 text-[11px] font-bold inline-block">
-                  LOOKING AHEAD
-                </span>
-                <h3 className="text-2xl font-bold uppercase text-[var(--m-text)] font-heading">
-                  Welcome to IPL {nextSeason}
-                </h3>
-                <p className="text-xs text-[var(--m-dim)] font-medium">
-                  Financial parameters and auction format for the upcoming campaign.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-5 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] space-y-2">
-                  <div className="text-xs font-bold text-[var(--m-accent-ink)] uppercase">Auction Format</div>
-                  <div className="text-2xl font-bold text-[var(--m-text)]">
-                    {isMega ? `MEGA AUCTION · NOV ${currentSeason}` : `MINI AUCTION · DEC ${currentSeason}`}
-                  </div>
-                  <p className="text-xs text-[var(--m-dim)] font-medium">
-                    {isMega
-                      ? '3-year contract cycle reset. Retain up to 6 players, remainder re-enter auction.'
-                      : 'Continuing contracts maintained. Release surplus players to replenish auction purse.'}
-                  </p>
-                </div>
-
-                <div className="p-5 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] space-y-2">
-                  <div className="text-xs font-bold text-[var(--m-green)] uppercase">Salary Cap Purse</div>
-                  <div className="text-2xl font-bold font-mono text-[var(--m-green)]">
-                    {formatPrice(12000 + (nextSeason - 2026) * 500)}
-                  </div>
-                  <p className="text-xs text-[var(--m-dim)] font-medium">
-                    Increased by ₹5 Cr in accordance with official IPL league salary cap inflation.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[var(--m-raised)] border border-[var(--m-line)] text-[var(--m-text)] text-xs font-medium flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-[var(--m-gold)] shrink-0" />
-                <span>
-                  Clicking <strong>Launch Season {nextSeason}</strong> will finalize development, add a new intake of young players to the auction pool, and open retentions.
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer Actions */}
-        <div className="p-4 bg-[var(--m-panel)] border-t border-[var(--m-line)] flex items-center justify-between">
-          <button
-            onClick={() => {
-              if (step === 'RETIREMENTS') setStep('PLAYER_DEVELOPMENT');
-              if (step === 'AUCTION_PREP') setStep('RETIREMENTS');
-            }}
-            disabled={step === 'PLAYER_DEVELOPMENT'}
-            className="sports-btn px-4 py-2 rounded-lg text-xs font-bold uppercase text-[var(--m-dim)] border border-[var(--m-line)] bg-[var(--m-raised)] hover:text-[var(--m-text)] hover:bg-[var(--m-line)] disabled:opacity-30 transition-colors"
-          >
-            Back
-          </button>
-
-          {step !== 'AUCTION_PREP' ? (
+    <Modal open onClose={close} width="max-w-2xl" labelledBy="recap-title">
+      <div className="px-6 pt-6 pb-4 border-b border-[var(--m-line)]">
+        <div className="flex items-center gap-2" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
+          {STEPS.map((s, i) => (
             <button
-              onClick={() => {
-                if (step === 'PLAYER_DEVELOPMENT') setStep('RETIREMENTS');
-                else if (step === 'RETIREMENTS') setStep('AUCTION_PREP');
-              }}
-              className="sports-btn px-6 py-2.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 bg-[var(--m-accent-ink)] text-white hover:bg-[var(--m-accent-ink)]/90 transition-colors shadow-md shadow-[var(--m-accent-ink)]/20"
+              key={s}
+              onClick={() => setStep(i)}
+              className={`text-xs font-medium px-3 py-1 rounded-full border ${
+                i === step ? 'bg-[var(--m-ink)] text-[var(--m-bg)] border-[var(--m-ink)]' : 'text-[var(--m-dim)] border-[var(--m-line-strong)]'
+              }`}
             >
-              <span>Next Step</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              {s}
             </button>
-          ) : (
-            <button
-              onClick={handleCompleteAdvance}
-              className="sports-btn px-8 py-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 bg-[var(--m-green)] hover:bg-[var(--m-green)]/90 text-white transition-colors shadow-lg shadow-[var(--m-green)]/20"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Launch Season {nextSeason}</span>
-            </button>
-          )}
+          ))}
         </div>
+        <h2 id="recap-title" className="m-display text-4xl mt-4">
+          {step === 0 && 'How your squad grew'}
+          {step === 1 && 'Farewells'}
+          {step === 2 && `Welcome to IPL ${currentSeason}`}
+        </h2>
+        <p className="text-sm text-[var(--m-dim)] mt-1">
+          {step === 0 &&
+            (growth.length
+              ? `After IPL ${endedSeason}: ${risers} improved, ${fallers} declined.`
+              : `No rating changes for your squad after IPL ${endedSeason}.`)}
+          {step === 1 &&
+            (retirements.length
+              ? `${retirements.length} player${retirements.length > 1 ? 's' : ''} retired after IPL ${endedSeason}.`
+              : `Nobody retired after IPL ${endedSeason}.`)}
+          {step === 2 && (isMega ? 'A mega auction year: retain up to 6, everyone else goes back in the pool.' : 'A mini auction year: your squad stays together. Release a few to free up purse.')}
+        </p>
       </div>
-    </div>
+
+      <div className="px-6 py-4 overflow-y-auto m-scroll flex-1 min-h-[240px]">
+        {step === 0 && (
+          <ul>
+            {growth.map((d) => (
+              <li key={d.playerId} className="flex items-center gap-3 py-2 border-b border-[var(--m-line)] last:border-0">
+                <OvrBadge ovr={d.newOverall} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{d.playerName}</div>
+                  <div className="text-[11px] text-[var(--m-faint)] truncate">
+                    Age {d.age} · {d.progressionNote}
+                  </div>
+                </div>
+                <span className="text-xs text-[var(--m-faint)] tabular-nums">{d.previousOverall} →</span>
+                <Delta value={d.overallDelta} />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {step === 1 &&
+          (retirements.length ? (
+            <ul>
+              {[...myRetirements, ...retirements.filter((r) => !myRetirements.includes(r))].map((r) => (
+                <li key={r.playerId} className="flex items-center gap-3 py-2 border-b border-[var(--m-line)] last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">
+                      {r.playerName}
+                      {r.lastFranchiseId === humanFranchiseId && <span className="m-chip ml-2">Your squad</span>}
+                      {r.hallOfFame && <span className="m-chip ml-2 !text-[var(--m-gold)]">Hall of Fame</span>}
+                    </div>
+                    <div className="text-[11px] text-[var(--m-faint)]">
+                      Age {r.age} · {r.careerMatches} matches · {r.careerRuns} runs · {r.careerWickets} wickets
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="py-10 text-center text-sm text-[var(--m-faint)]">Every veteran is back for another season.</div>
+          ))}
+
+        {step === 2 && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="m-panel px-4 py-4">
+              <div className="m-label">Auction</div>
+              <div className="m-display text-3xl mt-1">{isMega ? 'Mega' : 'Mini'}</div>
+              <div className="text-xs text-[var(--m-dim)] mt-1">
+                {isMega ? 'November' : 'December'} {endedSeason}
+              </div>
+            </div>
+            <div className="m-panel px-4 py-4">
+              <div className="m-label">Purse per team</div>
+              <div className="m-display text-3xl mt-1">{formatPrice(purse)}</div>
+              <div className="text-xs text-[var(--m-dim)] mt-1">
+                {purse > prevPurse ? `Up ${formatPrice(purse - prevPurse)} on last year` : 'Same as last year'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-6 py-4 border-t border-[var(--m-line)] flex items-center justify-between">
+        <MButton variant="ghost" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+          Back
+        </MButton>
+        {step < STEPS.length - 1 ? (
+          <MButton variant="primary" onClick={() => setStep((s) => s + 1)}>
+            Next <ArrowRight className="w-4 h-4" />
+          </MButton>
+        ) : (
+          <MButton variant="go" onClick={close}>
+            {isMega ? 'Open retentions' : 'Open releases'} <ArrowRight className="w-4 h-4" />
+          </MButton>
+        )}
+      </div>
+    </Modal>
   );
+}
+
+function Delta({ value }: { value: number }) {
+  if (value > 0)
+    return (
+      <span className="w-12 inline-flex items-center justify-end gap-0.5 text-[var(--m-green)] font-semibold tabular-nums">
+        <TrendingUp className="w-3.5 h-3.5" /> +{value}
+      </span>
+    );
+  if (value < 0)
+    return (
+      <span className="w-12 inline-flex items-center justify-end gap-0.5 text-[var(--m-red)] font-semibold tabular-nums">
+        <TrendingDown className="w-3.5 h-3.5" /> {value}
+      </span>
+    );
+  return <span className="w-12 text-right text-[var(--m-faint)]">±0</span>;
 }

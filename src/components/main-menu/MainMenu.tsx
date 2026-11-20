@@ -9,7 +9,10 @@ import React, { useMemo, useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { FRANCHISES } from '@/lib/data/franchises';
 import { GLOBAL_PLAYERS } from '@/lib/data/players';
-import { ChevronRight, ChevronLeft, Play, Plus, FolderOpen, Database, Settings, RotateCcw, Trophy, Sliders, Calendar } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Play, Plus, FolderOpen, Database, Settings, RotateCcw, Trophy, Sliders, Calendar, Info, X } from 'lucide-react';
+import { DIFFICULTY_GUIDE, difficultyGuide } from '@/lib/data/difficulty-guide';
+import { TeamEyes } from '@/components/fx/TeamEyes';
+import { IsoPyramid } from '@/components/fx/IsoPyramid';
 import type { AuctionPace, AuctionType, CPUDifficulty, Player } from '@/lib/types/game';
 import { auctionTypeFor, campaignLength, irlAuctionType, type CycleMode } from '@/lib/flow/season-flow';
 import { getLeaguePurseForSeason } from '@/lib/engines/career/contract-engine';
@@ -22,7 +25,7 @@ import { listAllSaveSlots } from '@/lib/engines/career/save-manager';
 import type { CareerSaveSlot } from '@/lib/types/career';
 import { LineField, MButton, OvrBadge, Panel, RoleTag, OverseasTag, TeamCrest, worldVars, StatTile } from '@/components/mynba/primitives';
 
-type View = 'home' | 'mode' | 'team' | 'rules';
+type View = 'home' | 'menu' | 'mode' | 'team' | 'rules';
 type ModeId = 'career' | 'irl' | 'reset' | 'custom';
 
 /** Every new game starts from the real IPL 2026 squads, heading into IPL 2027. */
@@ -33,8 +36,8 @@ const MODES: { id: ModeId; name: string; tag: string; desc: string; bullets: str
     id: 'career',
     name: 'Franchise Career',
     tag: 'Own cycle',
-    desc: 'Start your own 3-season cycle from today’s real squads: retain up to 6 before a mega auction, then two mini auctions.',
-    bullets: ['Real IPL 2026 squads', 'Mega auction before IPL 2027', '3 seasons · 1 mega + 2 mini'],
+    desc: 'Two full auction cycles from today’s real squads: retain up to 6 before each mega auction, with two mini auctions after each.',
+    bullets: ['Real IPL 2026 squads', 'Mega auctions before IPL 2027 and 2030', '6 seasons · 2 mega + 4 mini'],
     icon: Trophy,
   },
   {
@@ -42,39 +45,56 @@ const MODES: { id: ModeId; name: string; tag: string; desc: string; bullets: str
     name: 'Real IPL Timeline',
     tag: 'Follows IRL',
     desc: 'Mirror the real calendar. IPL 2027 is the last mini auction of the 2025–27 cycle; the mega auction comes before IPL 2028.',
-    bullets: ['Release Day first — no retentions', 'Mega auction before IPL 2028', '4 seasons · IPL 2027–2030'],
+    bullets: ['Release Day first — no retentions', 'Mega auctions before IPL 2028 and 2031', '7 seasons · IPL 2027–2033'],
     icon: Calendar,
   },
   {
     id: 'reset',
     name: 'Full Reset Draft',
     tag: 'Clean slate',
-    desc: 'Every franchise releases its entire squad for a mega auction — then lives with what it built for two more seasons.',
-    bullets: ['No retentions in year 1', 'Every star in the mega pool', '3 seasons · 1 mega + 2 mini'],
+    desc: 'Every franchise releases its entire squad for a mega auction — then lives with what it built until the second mega auction three seasons later.',
+    bullets: ['No retentions in year 1', 'Every star in the mega pool', '6 seasons · 2 mega + 4 mini'],
     icon: RotateCcw,
   },
   {
     id: 'custom',
     name: 'Custom Auction Lab',
     tag: 'Sandbox',
-    desc: 'Tune the league purse and difficulty, then play your own three-season cycle under your own numbers.',
-    bullets: ['Purse ₹80–150 Cr', 'Any difficulty', '3 seasons · 1 mega + 2 mini'],
+    desc: 'Tune the league purse and difficulty, then play two full auction cycles under your own numbers.',
+    bullets: ['Purse ₹80–150 Cr', 'Any difficulty', '6 seasons · 2 mega + 4 mini'],
     icon: Sliders,
   },
 ];
 
-/** Season-by-season preview of a mode's auction calendar. */
+/** A mode's auction calendar, grouped into cycles: each mega auction opens a cycle, minis follow. */
 function cyclePreview(mode: ModeId) {
   const settings = { auctionType: (mode === 'irl' ? 'Mini' : 'Mega') as AuctionType, startingSeason: START_SEASON, cycleMode: (mode === 'irl' ? 'irl' : 'custom') as CycleMode };
   const n = campaignLength(settings);
-  return Array.from({ length: n }, (_, i) => {
+  const cycles: { seasons: number[]; mega: boolean }[] = [];
+  for (let i = 0; i < n; i++) {
     const season = START_SEASON + i;
-    const type = auctionTypeFor(season, settings);
-    const note =
-      type === 'Mega'
-        ? 'Retain up to 6, everyone else re-enters a deep auction pool.'
-        : 'Squads stay together. Release a few, shop a small pool — trades matter most.';
-    return { season, type, note };
+    const mega = auctionTypeFor(season, settings) === 'Mega';
+    if (mega || !cycles.length) cycles.push({ seasons: [season], mega });
+    else cycles[cycles.length - 1].seasons.push(season);
+  }
+  return cycles.map((c) => {
+    const first = c.seasons[0];
+    const last = c.seasons[c.seasons.length - 1];
+    const minis = c.mega ? c.seasons.length - 1 : c.seasons.length;
+    const steps = [
+      c.mega && `Mega auction (Nov ${first - 1}): retain up to 6, the rest go back in the pool`,
+      minis > 0 &&
+        (c.mega
+          ? `Then ${minis} mini auction${minis > 1 ? 's' : ''}: squads stay, release a few and top up`
+          : `${minis > 1 ? `${minis} mini auctions` : 'Mini auction'} (Dec ${first - 1}): squads stay, release a few and top up`),
+    ].filter(Boolean) as string[];
+    return {
+      mega: c.mega,
+      label: c.mega ? 'Mega cycle' : 'Current cycle ends',
+      years: first === last ? `IPL ${first}` : `IPL ${first}–${String(last).slice(2)}`,
+      seasons: c.seasons.length,
+      steps,
+    };
   });
 }
 
@@ -132,19 +152,6 @@ export function MainMenu() {
   const savedCount = slots.filter((s) => s.metadata).length;
 
   const rosters = useMemo(() => Object.fromEntries(FRANCHISES.map((f) => [f.id, rosterOf(f.id)])), []);
-  const spotlight = useMemo(
-    () => [...GLOBAL_PLAYERS].sort((a, b) => b.ratings.overall - a.ratings.overall).slice(0, 8),
-    []
-  );
-  const poolStats = useMemo(() => {
-    const countries = new Set(GLOBAL_PLAYERS.map((p) => p.country));
-    return {
-      total: GLOBAL_PLAYERS.length,
-      overseas: GLOBAL_PLAYERS.filter((p) => p.nationality === 'Overseas').length,
-      countries: countries.size,
-    };
-  }, []);
-
   const startFranchise = () => {
     const purseLakhs = mode === 'custom' ? purseCr * 100 : getLeaguePurseForSeason(START_SEASON);
     const teams = FRANCHISES.map((f) => ({ ...f, totalPurse: purseLakhs, remainingPurse: purseLakhs }));
@@ -190,7 +197,7 @@ export function MainMenu() {
   // the team you pick keeps it. The mode step stays in the neutral house world.
   const worldId =
     hoverTeam ??
-    (view === 'home' ? (hasActiveCareer ? humanFranchiseId : null) : view === 'mode' ? null : teamId);
+    (view === 'home' ? null : view === 'menu' ? (hasActiveCareer ? humanFranchiseId : null) : view === 'mode' ? null : teamId);
 
   return (
     <div
@@ -214,16 +221,17 @@ export function MainMenu() {
       />
       {showDb && <GlobalPlayerDatabase isOpen={showDb} onClose={() => setShowDb(false)} players={GLOBAL_PLAYERS} />}
 
-      {/* Top bar */}
+      {/* Top bar (the title screen stands alone) */}
+      {view !== 'home' && (
       <div className="border-b border-[var(--m-ink)] transition-colors duration-500">
         <div className="max-w-[1440px] mx-auto h-11 px-4 sm:px-6 flex items-center gap-5 text-sm">
-          <button className="flex items-center gap-2 font-semibold" onClick={() => goto('home')}>
+          <button className="flex items-center gap-2 font-semibold" onClick={() => goto('menu')}>
             <span className="w-5 h-5 rounded-full border border-[var(--m-ink)] grid place-items-center" aria-hidden>
               <span className="w-2.5 h-2.5 rounded-full bg-[var(--m-accent)]" />
             </span>
             IPL Dynasty
           </button>
-          <nav className="hidden sm:flex items-center gap-4 text-[var(--m-dim)]" aria-label="Main">
+          <nav className={`${view === 'menu' ? 'hidden' : 'hidden sm:flex'} items-center gap-4 text-[var(--m-dim)]`} aria-label="Main">
             <button className="hover:text-[var(--m-text)]" onClick={() => goto('mode')}>New franchise</button>
             <button className="hover:text-[var(--m-text)]" onClick={() => setShowSaves(true)}>Load</button>
             <button className="hover:text-[var(--m-text)]" onClick={() => setShowDb(true)}>Players</button>
@@ -232,9 +240,12 @@ export function MainMenu() {
           <span className="ml-auto text-[var(--m-faint)] hidden md:inline">IPL {START_SEASON} offseason</span>
         </div>
       </div>
+      )}
 
       {view === 'home' ? (
-        <HomeScreen
+        <HomeScreen onBegin={() => goto('menu')} />
+      ) : view === 'menu' ? (
+        <MenuScreen
           hasActiveCareer={hasActiveCareer}
           activeLabel={
             activeTeam
@@ -242,15 +253,6 @@ export function MainMenu() {
               : ''
           }
           savedCount={savedCount}
-          spotlight={spotlight}
-          poolStats={poolStats}
-          worldSeed={worldId ?? 'house'}
-          onHoverTeam={setHoverTeam}
-          onPickTeam={(id) => {
-            setTeamId(id);
-            setHoverTeam(null);
-            goto('mode');
-          }}
           onContinue={resumeCareer}
           onNew={() => goto('mode')}
           onLoad={() => setShowSaves(true)}
@@ -291,7 +293,7 @@ export function MainMenu() {
             </ol>
           </div>
 
-          <div className="flex-1">
+          <div className="flex-1 m-rise" key={view}>
             {view === 'mode' && <ModeStep mode={mode} setMode={setMode} />}
             {view === 'team' && <TeamStep teamId={teamId} setTeamId={setTeamId} onHoverTeam={setHoverTeam} rosters={rosters} mode={mode} />}
             {view === 'rules' && (
@@ -313,7 +315,7 @@ export function MainMenu() {
           <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-[var(--m-bg)]/92 backdrop-blur border-t border-[var(--m-ink)] flex items-center justify-between gap-3 transition-colors duration-500">
             <MButton
               variant="ghost"
-              onClick={() => goto(view === 'mode' ? 'home' : view === 'team' ? 'mode' : 'team')}
+              onClick={() => goto(view === 'mode' ? 'menu' : view === 'team' ? 'mode' : 'team')}
             >
               <ChevronLeft className="w-4 h-4" /> Back
             </MButton>
@@ -341,73 +343,45 @@ export function MainMenu() {
 }
 
 // ------------------------------------------------------------
-// Team swatch tray — one "eye" per franchise (Peabody House's colour tray).
-// Hovering a swatch previews that team's world across the page.
+// Title screen: one statement, one button. Fits the viewport, never scrolls.
 // ------------------------------------------------------------
-function SwatchTray({
-  selected,
-  onHover,
-  onPick,
-  size = 'md',
-}: {
-  selected?: string | null;
-  onHover: (id: string | null) => void;
-  onPick: (id: string) => void;
-  size?: 'md' | 'lg';
-}) {
-  const dim = size === 'lg' ? 'w-14 h-14' : 'w-9 h-9 sm:w-10 sm:h-10';
+function HomeScreen({ onBegin }: { onBegin: () => void }) {
   return (
-    <div
-      className="inline-flex shrink-0 border-r border-[var(--m-ink)] rounded-r-full overflow-hidden"
-      role="listbox"
-      aria-label="Franchises"
-      onMouseLeave={() => onHover(null)}
-    >
-      {FRANCHISES.map((f, i) => {
-        const w = getTeamWorld(f.id);
-        const active = selected === f.id;
-        return (
-          <button
-            key={f.id}
-            role="option"
-            aria-selected={active}
-            title={f.name}
-            onMouseEnter={() => onHover(f.id)}
-            onFocus={() => onHover(f.id)}
-            onBlur={() => onHover(null)}
-            onClick={() => onPick(f.id)}
-            className={`group relative grid place-items-center p-1.5 sm:p-2 ${i > 0 ? 'border-l border-[var(--m-ink)]' : ''} ${active ? 'bg-[var(--m-ink)]' : 'hover:bg-[var(--m-raised)]'} transition-colors`}
-          >
-            <span
-              className={`${dim} rounded-full grid place-items-center transition-transform duration-300 group-hover:scale-105`}
-              style={{ background: w.accent, boxShadow: `inset 0 0 0 1px ${w.ink}, inset 0 0 0 4px ${w.accent2}, inset 0 0 0 5px ${w.ink}` }}
-            >
-              <span className="w-[38%] h-[38%] rounded-full grid place-items-center" style={{ background: w.ink }}>
-                <span className="w-[30%] h-[30%] rounded-full translate-x-[35%] -translate-y-[35%]" style={{ background: w.paper }} />
-              </span>
-            </span>
-            <span className={`absolute bottom-0.5 left-0 right-0 text-center text-[8px] font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity ${active ? 'text-[var(--m-bg)] opacity-100' : ''}`}>
-              {f.abbreviation}
-            </span>
-          </button>
-        );
-      })}
+    <div className="relative h-[100dvh] overflow-hidden flex flex-col items-center justify-center px-6 text-center">
+      <div className="absolute inset-0 text-[var(--m-ink)] opacity-[0.22]" aria-hidden>
+        <LineField seed="house" lines={48} accentEvery={9} className="w-full h-full m-drift" />
+      </div>
+      <TeamEyes className="absolute top-6 sm:top-8 left-0 right-0 text-left" />
+      <div className="relative flex flex-col items-center">
+        <span className="m-rise m-label tracking-[0.3em]">IPL {START_SEASON} · Offseason</span>
+        <h1 className="m-rise m-display text-[4.5rem] sm:text-[8rem] leading-[0.9] mt-5" style={{ animationDelay: '80ms' }}>
+          IPL Dynasty
+        </h1>
+        <p className="m-rise text-[var(--m-dim)] mt-6 max-w-md leading-relaxed text-lg" style={{ animationDelay: '160ms' }}>
+          Ten franchises. One auction room. Build the squad, then live with every rupee.
+        </p>
+        <MButton
+          variant="primary"
+          size="xl"
+          onClick={onBegin}
+          className="group m-rise mt-12 min-w-[220px] justify-center"
+          style={{ animationDelay: '260ms' }}
+          autoFocus
+        >
+          Begin <ChevronRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1" />
+        </MButton>
+      </div>
     </div>
   );
 }
 
 // ------------------------------------------------------------
-// Home / title screen
+// Menu: shown after Begin.
 // ------------------------------------------------------------
-function HomeScreen({
+function MenuScreen({
   hasActiveCareer,
   activeLabel,
   savedCount,
-  spotlight,
-  poolStats,
-  worldSeed,
-  onHoverTeam,
-  onPickTeam,
   onContinue,
   onNew,
   onLoad,
@@ -417,11 +391,6 @@ function HomeScreen({
   hasActiveCareer: boolean;
   activeLabel: string;
   savedCount: number;
-  spotlight: Player[];
-  poolStats: { total: number; overseas: number; countries: number };
-  worldSeed: string;
-  onHoverTeam: (id: string | null) => void;
-  onPickTeam: (id: string) => void;
   onContinue: () => void;
   onNew: () => void;
   onLoad: () => void;
@@ -432,107 +401,43 @@ function HomeScreen({
     hasActiveCareer && { key: 'continue', label: 'Continue', sub: activeLabel, icon: Play, onClick: onContinue },
     { key: 'new', label: 'New franchise', sub: `Pick a team and start the IPL ${START_SEASON} offseason`, icon: Plus, onClick: onNew },
     { key: 'load', label: 'Load career', sub: savedCount ? `${savedCount} saved career${savedCount > 1 ? 's' : ''}` : 'No saved careers yet', icon: FolderOpen, onClick: onLoad },
-    { key: 'db', label: 'Player database', sub: `${poolStats.total} active cricketers`, icon: Database, onClick: onDb },
-    { key: 'settings', label: 'Settings', sub: 'Difficulty, auction pace & IPL rules', icon: Settings, onClick: onSettings },
   ].filter(Boolean) as { key: string; label: string; sub: string; icon: React.ElementType; onClick: () => void }[];
 
-  const ticker = [
-    `${poolStats.total} players registered from ${poolStats.countries} countries`,
-    `${poolStats.overseas} overseas players chasing 80 overseas slots`,
-    '10 franchises · 18–25 man squads · max 8 overseas',
-    'Retention slabs: ₹18 Cr, ₹14 Cr, ₹11 Cr · uncapped ₹4 Cr',
-    ...spotlight.slice(0, 5).map((p) => `${p.name} (${p.ratings.overall} OVR) headlines the marquee set`),
-  ];
-
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] max-w-[1440px] w-full mx-auto">
-        {/* Left: statement, team tray, menu */}
-        <div className="flex flex-col lg:border-r border-[var(--m-ink)]">
-          <div className="px-6 sm:px-10 pt-14 pb-10 m-rise">
-            <h1 className="m-display text-[3.1rem] sm:text-[4.4rem] leading-[0.98] max-w-[13ch]">
-              IPL Dynasty is a front office for the richest league in cricket.
-            </h1>
-            <p className="text-[var(--m-dim)] mt-6 max-w-md leading-relaxed">
-              Retain your core, scout the pool, win the auction against nine CPU general managers — then live with
-              every rupee for three seasons.
-            </p>
-          </div>
-
-          <div className="border-y border-[var(--m-ink)] flex items-center overflow-x-auto">
-            <SwatchTray selected={hasActiveCareer ? null : undefined} onHover={onHoverTeam} onPick={onPickTeam} />
-            <span className="px-5 text-xs text-[var(--m-faint)] hidden 2xl:block">Hover a franchise to see its world — click to start with it</span>
-          </div>
-
-          <nav className="flex flex-col px-6 sm:px-10 py-8" aria-label="Main menu">
-            {items.map((it, i) => {
-              const Icon = it.icon;
-              return (
-                <button
-                  key={it.key}
-                  onClick={it.onClick}
-                  className="group m-rise text-left grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-4 py-4 border-t border-[var(--m-line)] last:border-b"
-                  style={{ animationDelay: `${80 + i * 60}ms` }}
-                >
-                  <Icon className="w-5 h-5 text-[var(--m-faint)] group-hover:text-[var(--m-text)] transition-colors" strokeWidth={1.5} />
-                  <span className="min-w-0">
-                    <span className="block m-display text-[1.9rem] leading-none">{it.label}</span>
-                    <span className="block text-xs truncate text-[var(--m-faint)] mt-1.5">{it.sub}</span>
-                  </span>
-                  <span className="m-arrow-link text-[var(--m-dim)] group-hover:text-[var(--m-text)]">
-                    {it.key === 'continue' ? 'Resume' : 'Open'}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Right: line field + spotlight */}
-        <div className="flex flex-col min-w-0">
-          <div className="relative h-[300px] lg:h-[420px] border-b border-[var(--m-ink)] text-[var(--m-ink)] overflow-hidden">
-            <LineField seed={worldSeed} lines={52} accentEvery={11} className="absolute inset-0 w-full h-full m-drift" />
-          </div>
-          <div className="grid grid-cols-3 gap-5 px-6 sm:px-8 pt-6">
-            <StatTile label="Active players" value={poolStats.total} />
-            <StatTile label="Overseas" value={poolStats.overseas} />
-            <StatTile label="Nations" value={poolStats.countries} />
-          </div>
-          <div className="px-6 sm:px-8 pt-8 pb-10">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm font-semibold">Marquee spotlight</span>
-              <span className="text-xs text-[var(--m-faint)]">Top OVR</span>
-            </div>
-            <ul className="mt-3 border-t border-[var(--m-ink)]">
-              {spotlight.map((p) => (
-                <li key={p.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 py-2 border-b border-[var(--m-line)]">
-                  <OvrBadge ovr={p.ratings.overall} size="sm" />
-                  <div className="min-w-0">
-                    <div className="text-[15px] font-medium truncate">{p.name}</div>
-                    <div className="text-[11px] text-[var(--m-faint)]">{p.country} · age {p.age}</div>
-                  </div>
-                  <RoleTag role={p.role} />
-                  {p.currentFranchiseId ? <TeamCrest franchiseId={p.currentFranchiseId} size="xs" /> : <span className="m-chip">FA</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+    <div className="flex-1 flex items-center justify-center gap-16 xl:gap-28 px-6 py-10">
+      <div className="hidden lg:block w-[300px] m-rise" aria-hidden>
+        <IsoPyramid mode="idle" className="w-full h-auto overflow-visible" />
+        <div className="mx-auto mt-3 h-3 w-3/4 rounded-[50%] bg-[var(--m-ink)] opacity-10 blur-[2px]" />
+        <div className="text-center text-xs text-[var(--m-faint)] mt-4">Ten franchises. One dynasty.</div>
       </div>
-
-      {/* News ticker */}
-      <div className="border-t border-[var(--m-ink)] overflow-hidden" aria-hidden>
-        <div className="flex items-center">
-          <span className="shrink-0 px-4 py-2 bg-[var(--m-ink)] text-[var(--m-bg)] text-xs font-semibold">Auction wire</span>
-          <div className="overflow-hidden flex-1">
-            <div className="m-ticker-track py-2 pl-6 text-sm text-[var(--m-dim)]">
-              {[...ticker, ...ticker].map((t, i) => (
-                <span key={i} className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--team-primary)] inline-block" /> {t}
+      <div className="w-full max-w-lg">
+        <nav className="flex flex-col" aria-label="Main menu">
+          {items.map((it, i) => {
+            const Icon = it.icon;
+            return (
+              <button
+                key={it.key}
+                onClick={it.onClick}
+                className="group m-rise text-left grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-4 py-5 border-t border-[var(--m-line)] last:border-b"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <Icon className="w-5 h-5 text-[var(--m-faint)] group-hover:text-[var(--m-text)] transition-colors" strokeWidth={1.5} />
+                <span className="min-w-0">
+                  <span className="block m-display text-[2rem] leading-none">{it.label}</span>
+                  <span className="block text-xs truncate text-[var(--m-faint)] mt-1.5">{it.sub}</span>
                 </span>
-              ))}
-            </div>
-          </div>
+                <ChevronRight className="w-5 h-5 text-[var(--m-dim)] group-hover:text-[var(--m-text)] group-hover:translate-x-0.5 transition" />
+              </button>
+            );
+          })}
+        </nav>
+        <div className="flex items-center justify-center gap-6 mt-8 text-sm text-[var(--m-dim)]">
+          <button className="inline-flex items-center gap-1.5 hover:text-[var(--m-text)]" onClick={onDb}>
+            <Database className="w-4 h-4" strokeWidth={1.5} /> Player database
+          </button>
+          <button className="inline-flex items-center gap-1.5 hover:text-[var(--m-text)]" onClick={onSettings}>
+            <Settings className="w-4 h-4" strokeWidth={1.5} /> Settings
+          </button>
         </div>
       </div>
     </div>
@@ -556,7 +461,7 @@ function ModeStep({ mode, setMode }: { mode: ModeId; setMode: (m: ModeId) => voi
                 <LineField seed={m.id} lines={16} className="absolute inset-0 w-full h-full opacity-70" />
                 <span className="absolute left-4 top-4 m-chip !bg-[var(--m-panel)] !text-[var(--m-text)] !border-[var(--m-ink)]">{m.tag}</span>
                 <span className="absolute right-4 bottom-3 w-11 h-11 rounded-full grid place-items-center bg-[var(--m-panel)] border border-[var(--m-ink)]">
-                  <Icon className="w-5 h-5" strokeWidth={1.5} />
+                  <Icon className="w-5 h-5 fx-wiggle-on-hover" strokeWidth={1.5} />
                 </span>
               </div>
               <div className="p-5 flex-1 flex flex-col">
@@ -575,18 +480,24 @@ function ModeStep({ mode, setMode }: { mode: ModeId; setMode: (m: ModeId) => voi
         })}
       </div>
       <div>
-        <div className="text-sm font-semibold mb-2">Your auction calendar</div>
-        <div className={`grid grid-cols-1 sm:grid-cols-2 ${cycle.length > 3 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} border-t border-l border-[var(--m-ink)]`} aria-label="Campaign cycle">
+        <div className="text-sm font-semibold mb-2">Your auction calendar · {cycle.reduce((n, c) => n + c.seasons, 0)} seasons</div>
+        <div className={`grid grid-cols-1 ${cycle.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} border-t border-l border-[var(--m-ink)]`} aria-label="Campaign cycles">
           {cycle.map((c, i) => (
-            <div key={c.season} className="border-r border-b border-[var(--m-ink)] px-4 py-4 bg-[var(--m-panel)]">
+            <div key={c.years} className="border-r border-b border-[var(--m-ink)] px-5 py-4 bg-[var(--m-panel)]">
               <div className="flex items-baseline gap-2">
-                <span className="text-[11px] text-[var(--m-faint)]">Year {i + 1}</span>
-                <span className="m-display text-2xl">IPL {c.season}</span>
-                <span className={`text-[11px] font-semibold ml-auto ${c.type === 'Mega' ? 'text-[var(--m-gold)]' : 'text-[var(--m-green)]'}`}>
-                  {c.type} · {c.type === 'Mega' ? 'Nov' : 'Dec'} {c.season - 1}
+                <span className="text-[11px] text-[var(--m-faint)]">{c.mega ? `Cycle ${i + 1}` : c.label}</span>
+                <span className="m-display text-2xl">{c.years}</span>
+                <span className="text-[11px] text-[var(--m-dim)] ml-auto">
+                  {c.seasons} season{c.seasons > 1 ? 's' : ''}
                 </span>
               </div>
-              <p className="text-xs text-[var(--m-dim)] mt-1.5 leading-relaxed">{c.note}</p>
+              <ul className="mt-2 space-y-1">
+                {c.steps.map((st) => (
+                  <li key={st} className="text-xs text-[var(--m-dim)] flex gap-2 leading-relaxed">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[var(--m-accent)] shrink-0" /> {st}
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
         </div>
@@ -701,6 +612,77 @@ function TeamStep({
   );
 }
 
+/** Difficulty tiles, each with an (i) button that explains the level with an example. */
+export function DifficultyPicker({ value, onChange }: { value: CPUDifficulty; onChange: (d: CPUDifficulty) => void }) {
+  const [infoFor, setInfoFor] = useState<CPUDifficulty | null>(null);
+  const info = infoFor ? difficultyGuide(infoFor) : null;
+  React.useEffect(() => {
+    if (!infoFor) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setInfoFor(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [infoFor]);
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {DIFFICULTY_GUIDE.map((d) => (
+          <div key={d.id} className="relative">
+            <button
+              data-active={value === d.id}
+              onClick={() => onChange(d.id)}
+              className="m-tile p-3 pr-9 w-full h-full text-left"
+              aria-pressed={value === d.id}
+            >
+              <div className="m-display text-2xl">{d.id}</div>
+              <div className="text-xs text-[var(--m-dim)] mt-1">{d.short}</div>
+            </button>
+            <button
+              onClick={() => setInfoFor(infoFor === d.id ? null : d.id)}
+              aria-expanded={infoFor === d.id}
+              aria-controls="difficulty-info"
+              aria-label={`What does ${d.id} mean?`}
+              title={`What does ${d.id} mean?`}
+              className={`absolute top-2 right-2 w-6 h-6 rounded-full border grid place-items-center transition-colors ${
+                infoFor === d.id
+                  ? 'bg-[var(--m-ink)] text-[var(--m-bg)] border-[var(--m-ink)]'
+                  : 'border-[var(--m-line-strong)] text-[var(--m-dim)] hover:text-[var(--m-text)] hover:border-[var(--m-ink)]'
+              }`}
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+      {info && (
+        <div id="difficulty-info" role="region" aria-label={`${info.id} difficulty`} className="m-rise mt-3 border border-[var(--m-ink)] bg-[var(--m-raised)] rounded-md px-4 py-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="m-display text-2xl">{info.id}</div>
+            <button className="text-xs text-[var(--m-dim)] hover:text-[var(--m-text)] inline-flex items-center gap-1" onClick={() => setInfoFor(null)}>
+              <X className="w-3.5 h-3.5" /> Close
+            </button>
+          </div>
+          <dl className="mt-2 grid gap-2 text-sm">
+            {([
+              ['Auction', info.auction],
+              ['Trades', info.trades],
+              ['Retentions', info.retentions],
+            ] as const).map(([k, v]) => (
+              <div key={k} className="grid sm:grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3">
+                <dt className="font-semibold">{k}</dt>
+                <dd className="text-[var(--m-dim)] leading-relaxed">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-sm border-t border-[var(--m-line)] pt-3">
+            <span className="font-semibold">Example: </span>
+            <span className="text-[var(--m-dim)]">{info.example}</span>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RulesStep({
   mode,
   teamId,
@@ -722,12 +704,6 @@ function RulesStep({
   setPurseCr: (n: number) => void;
   roster: Player[];
 }) {
-  const DIFFS: { id: CPUDifficulty; desc: string }[] = [
-    { id: 'Easy', desc: 'CPU GMs overpay rarely and fold early in bidding wars.' },
-    { id: 'Normal', desc: 'Balanced valuations with realistic bidding wars.' },
-    { id: 'Hard', desc: 'Sharper needs analysis; rivals target your shortlist.' },
-    { id: 'Expert', desc: 'Ruthless, budget-perfect GMs. Every crore counts.' },
-  ];
   const PACES: { id: AuctionPace; desc: string }[] = [
     { id: 'Normal', desc: '~1.3s per bid when auto-running' },
     { id: 'Fast', desc: '~0.7s per bid' },
@@ -739,14 +715,7 @@ function RulesStep({
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-4">
       <div className="space-y-4">
         <Panel title="CPU general managers">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {DIFFS.map((d) => (
-              <button key={d.id} data-active={difficulty === d.id} onClick={() => setDifficulty(d.id)} className="m-tile p-3" aria-pressed={difficulty === d.id}>
-                <div className="m-display text-2xl">{d.id}</div>
-                <div className="text-xs text-[var(--m-dim)] mt-1">{d.desc}</div>
-              </button>
-            ))}
-          </div>
+          <DifficultyPicker value={difficulty} onChange={setDifficulty} />
         </Panel>
         <Panel title="Auction pace">
           <div className="grid grid-cols-3 gap-2">

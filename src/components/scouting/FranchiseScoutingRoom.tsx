@@ -26,6 +26,7 @@ export function FranchiseScoutingRoom() {
     updateHumanShortlist,
     removeHumanShortlist,
     compileAuctionPool,
+    setPhase,
   } = useGameStore();
 
   const [tab, setTab] = useState<'board' | 'pool' | 'rivals'>('board');
@@ -56,10 +57,13 @@ export function FranchiseScoutingRoom() {
 
   const plannedSpend = Object.values(entries).reduce((s, e) => s + (e.targetMaxBidLakhs || 0), 0);
 
-  const compile = () => {
+  const compile = (skipSets = false) => {
     setCompiling(true);
     // Let the button state paint before the synchronous compile runs.
-    setTimeout(() => compileAuctionPool(), 30);
+    setTimeout(() => {
+      compileAuctionPool();
+      if (skipSets) setPhase('Auction');
+    }, 30);
   };
 
   if (!human) return null;
@@ -72,11 +76,16 @@ export function FranchiseScoutingRoom() {
         franchiseId={humanFranchiseId}
         kicker="Offseason"
         title="Scouting Room"
-        subtitle={<>Rank your targets and set walk-away prices. When you&apos;re done, the league compiles the final auction list and sets from every franchise&apos;s shortlist.</>}
+        subtitle={<>Optional: rank your targets and set the most you&apos;ll pay. Then preview the auction sets, or go straight to bidding.</>}
         right={
-          <MButton variant="primary" size="lg" onClick={compile} disabled={compiling}>
-            <Sparkles className="w-4 h-4" /> {compiling ? 'Compiling sets…' : 'Compile auction sets'}
-          </MButton>
+          <>
+            <MButton variant="ghost" onClick={() => compile(true)} disabled={compiling}>
+              Skip to auction
+            </MButton>
+            <MButton variant="primary" size="lg" onClick={() => compile()} disabled={compiling}>
+              <Sparkles className="w-4 h-4" /> {compiling ? 'Compiling sets…' : 'Compile auction sets'}
+            </MButton>
+          </>
         }
       />
 

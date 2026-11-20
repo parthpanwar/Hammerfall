@@ -14,7 +14,9 @@ import { useGameStore } from '../src/lib/store/game-store';
 import { FRANCHISES } from '../src/lib/data/franchises';
 import { GLOBAL_PLAYERS } from '../src/lib/data/players';
 import { cpuRetentionDecisions } from '../src/lib/engines/retention-engine';
-import { RETENTION_RULES_2026 } from '../src/lib/data/retention-rules';
+import { getMegaRetentionRules } from '../src/lib/data/retention-rules';
+import { getLeaguePurseForSeason } from '../src/lib/engines/career/contract-engine';
+import { auctionTypeFor } from '../src/lib/flow/season-flow';
 import { createSeededRandom } from '../src/lib/utils/random';
 import { simulateRemainingAuction } from '../src/lib/engines/auction/auction-runner';
 import { generateIPLFixtures, calculateStandings } from '../src/lib/engines/tournament-engine';
@@ -28,6 +30,8 @@ import { PROGRESSION_TUNING } from '../src/lib/engines/career/progression-tuning
 import type { Player, PlayerSeasonStats } from '../src/lib/types/game';
 
 console.warn = () => {}; // zustand persist has no storage here
+const SEASONS = Number(process.env.SEASONS ?? 6); // two auction cycles
+const START = 2027;
 const SEEDS = (process.env.SEEDS ?? '1,7,42,99,2026').split(',').map(Number);
 const DETAIL_SEED = Number(process.env.DETAIL_SEED ?? 42);
 const VERBOSE = !!process.env.VERBOSE;
@@ -117,6 +121,13 @@ interface CareerResult {
   progress: SeasonProgress[];
   auctions: AuctionYouth[];
   youngRisers: number; // Indians ≤23 & < 76 at S1 who are ≥ 80 by S4
+  retirements: number[];
+  money: AuctionMoney[];
+}
+
+function youngRisersNow(ids: string[]): number {
+  const byId = new Map(S().allPlayers.map((p) => [p.id, p]));
+  return ids.filter((id) => (byId.get(id)?.ratings.overall ?? 0) >= 80).length;
 }
 
 // ---------------------------------------------------------------- flow
@@ -130,6 +141,71 @@ function runAuction(compile = true) {
   if (dup.length) console.log(`  ⚠️ ${dup.length} players on two squads after the ${S().currentSeason} auction: ${dup.slice(0, 5).join(', ')}`);
 }
 
+interface AuctionMoney {
+  season: number;
+  type: 'Mega' | 'Mini';
+  leftCr: number[]; // purse left per team after the auction (Cr)
+  spentPct: number; // share of the league's available purse spent
+  overpaid: string[]; // ≤ 78 OVR sold for ≥ ₹6 Cr
+  overpaidCount: number;
+  fadedCount: number; // ≤ 74 OVR sold for ₹5 Cr+
+}
+const moneyLog: AuctionMoney[] = [];
+const peak = new Map<string, number>(); // best overall seen per player
+
+/** Compile + run an auction, logging purse use and suspicious sales. */
+function trackedAuction(type: 'Mega' | 'Mini', compiled = false) {
+  if (!compiled) S().compileAuctionPool();
+  if (process.env.DEBUG_INDEX) {
+    const ses = S().auctionSession!;
+    console.log(`  [${type} ${ses.seasonYear}] open index ${ses.priceIndex} · pool ${ses.playerPool.length} · squads ${S().franchises.map((f) => f.players.length).join(',')}`);
+  }
+  const before = new Map(S().franchises.map((f) => [f.id, f.remainingPurse]));
+  const available = [...before.values()].reduce((a, b) => a + b, 0);
+  const kept = new Set(S().franchises.flatMap((f) => f.players.map((p) => p.id)));
+  runAuction(false);
+  const left = S().franchises.map((f) => f.remainingPurse);
+  if (process.env.DEBUG_RICH && type === 'Mega') for (const f of S().franchises) if (f.remainingPurse >= 1000) console.log(`  RICH ${f.shortName} left ₹${(f.remainingPurse / 100).toFixed(1)} n ${f.players.length} os ${f.players.filter((p) => p.nationality === 'Overseas').length} retained ${f.retainedPlayers?.length ?? 0}`);
+  if (process.env.DEBUG_INDEX) console.log(`  [${type}] squads after ${S().franchises.map((f) => f.players.length).join(',')}`);
+  const sales = S().franchises.flatMap((f) => f.players.filter((p) => !kept.has(p.id)));
+  // Faded or merely decent established players at star prices (developing youngsters excluded).
+  // ₹6 Cr at a ₹120 Cr purse, scaled with the purse.
+  const bar = Math.round((600 * (S().franchises[0]?.totalPurse ?? 12000)) / 12000);
+  const bad = sales.filter((p) => p.age >= 26 && p.ratings.overall <= 78 && p.soldPrice >= bar).sort((a, b) => b.soldPrice - a.soldPrice);
+  const faded = sales.filter((p) => p.ratings.overall <= 74 && p.soldPrice >= 500);
+  moneyLog.push({
+    season: S().currentSeason,
+    type,
+    leftCr: left.map((l) => l / 100),
+    spentPct: available ? 1 - left.reduce((a, b) => a + b, 0) / available : 1,
+    overpaid: bad.slice(0, 6).map((p) => `${p.name} ${p.age} ${p.ratings.overall}(peak ${peak.get(p.id) ?? p.ratings.overall}) ₹${(p.soldPrice / 100).toFixed(1)}Cr ${p.status}`),
+    overpaidCount: bad.length,
+    fadedCount: faded.length,
+  });
+  return moneyLog[moneyLog.length - 1];
+}
+
+function printMoney(m: AuctionMoney) {
+  console.log(
+    `  ${m.type} auction ${m.season} money: spent ${(m.spentPct * 100).toFixed(0)}% of available · left per team ₹[${m.leftCr.map((x) => x.toFixed(1)).join(', ')}] Cr · ≤78 OVR (26+) sold ≥₹6 Cr: ${m.overpaidCount}${m.overpaid.length ? ' — ' + m.overpaid.join(' | ') : ''}`
+  );
+}
+
+/** Retention Day for every (CPU) franchise under the season's slabs. */
+function megaRetention(seed: number) {
+  const rng = createSeededRandom(seed + S().currentSeason);
+  const decisions = [];
+  for (const f of S().franchises) {
+    const d = cpuRetentionDecisions(f, getMegaRetentionRules(f.totalPurse), rng);
+    decisions.push(...d);
+    const kept = f.players.filter((p) => d.some((x) => x.playerId === p.id));
+    S().updateFranchise(f.id, { players: kept, retainedPlayers: kept, remainingPurse: f.totalPurse - d.reduce((a, b) => a + b.cost, 0) });
+  }
+  S().setRetentionDecisions(decisions);
+  S().completeRetention();
+  S().initializeRegistration();
+}
+
 function auctionYouth(season: number): AuctionYouth {
   S().compileAuctionPool();
   const pool = S().finalAuctionPool;
@@ -140,7 +216,7 @@ function auctionYouth(season: number): AuctionYouth {
   }
   const tiers = pool.map((p) => ({ p, t: youthTier(p) }));
   const domestic = pool.filter((p) => p.development?.trend === 'Domestic breakout' && p.development.season === season).length;
-  runAuction(false);
+  trackedAuction('Mini', true);
   const owner = new Map<string, Player>();
   for (const f of S().franchises) for (const p of f.players) owner.set(p.id, p);
   const youth = tiers.filter((x) => x.t === 'wonderkid' || x.t === 'hot');
@@ -311,28 +387,25 @@ function runCareer(seed: number): CareerResult {
   const detail = seed === DETAIL_SEED || VERBOSE;
   const seeded = createSeededRandom(seed);
   Math.random = () => seeded.next(); // the store's auction seeds
+  const purse = getLeaguePurseForSeason(START);
   S().initializeGame(
-    { startingSeason: 2026, auctionType: 'Mega', rulesPreset: 'Official', cpuDifficulty: 'Normal', auctionPace: 'Normal', matchSimMode: 'Quick', allowCustomPurse: false, enableInjuries: false, enablePlayerDevelopment: true, seed },
+    { startingSeason: START, cycleMode: 'custom', auctionType: 'Mega', rulesPreset: 'Official', cpuDifficulty: 'Normal', auctionPace: 'Normal', matchSimMode: 'Quick', allowCustomPurse: false, enableInjuries: false, enablePlayerDevelopment: true, seed },
     NO_HUMAN,
-    FRANCHISES,
+    FRANCHISES.map((f) => ({ ...f, totalPurse: purse, remainingPurse: purse })),
     GLOBAL_PLAYERS
   );
-  const rng = createSeededRandom(seed + 1);
-  const decisions = [];
-  for (const f of S().franchises) {
-    const d = cpuRetentionDecisions(f, RETENTION_RULES_2026, rng);
-    decisions.push(...d);
-    const kept = f.players.filter((p) => d.some((x) => x.playerId === p.id));
-    S().updateFranchise(f.id, { players: kept, retainedPlayers: kept, remainingPurse: 12000 - d.reduce((a, b) => a + b.cost, 0) });
-  }
-  S().setRetentionDecisions(decisions);
-  S().completeRetention();
-  S().initializeRegistration();
-  runAuction();
+  moneyLog.length = 0;
+  peak.clear();
+  for (const p of S().allPlayers) peak.set(p.id, p.ratings.overall);
+  megaRetention(seed);
+  const firstMega = trackedAuction('Mega');
 
-  const res: CareerResult = { seed, bands: [], means: [], progress: [], auctions: [], youngRisers: 0 };
+  const res: CareerResult = { seed, bands: [], means: [], progress: [], auctions: [], youngRisers: 0, retirements: [], money: [] };
   const startYoung = S().allPlayers.filter((p) => p.nationality === 'Indian' && p.age <= 23 && p.ratings.overall < 76 && !p.isRetired).map((p) => p.id);
-  if (detail) console.log(`\n================ seed ${seed} ================`);
+  if (detail) {
+    console.log(`\n================ seed ${seed} ================`);
+    printMoney(firstMega);
+  }
   const traces = new Map<string, { name: string; ovr: number; pot: number; m: number; t?: string }[]>();
   const snap = () => {
     const reg = new Map(S().allPlayers.map((p) => [p.id, p]));
@@ -347,11 +420,13 @@ function runCareer(seed: number): CareerResult {
     }
   };
 
-  for (let y = 1; y <= 4; y++) {
+  for (let y = 1; y <= SEASONS; y++) {
+    for (const p of S().allPlayers) peak.set(p.id, Math.max(peak.get(p.id) ?? 0, p.ratings.overall));
     const pool = relevantPool();
     const c = bandCounts(pool);
     res.bands.push(c);
     res.means.push(mean(pool.map((p) => p.ratings.overall)));
+    if (y === 4) res.youngRisers = youngRisersNow(startYoung);
     if (detail) {
       console.log(`\n-- Season ${S().currentSeason} (year ${y}) --`);
       printBands('IPL-relevant pool', c, res.means[y - 1]);
@@ -369,7 +444,7 @@ function runCareer(seed: number): CareerResult {
         console.log(`  squads: ${BANDS.map((b) => `${b} ${sc[b]}`).join(' · ')}   |   top-60 free agents: ${BANDS.map((b) => `${b} ${fc[b]}`).join(' · ')}`);
       }
     }
-    if (y === 4) break;
+    if (y === SEASONS) break;
 
     playSeason(seed);
     snap();
@@ -377,6 +452,9 @@ function runCareer(seed: number): CareerResult {
     const before = new Map(S().allPlayers.map((p) => [p.id, p]));
     const next = S().currentSeason + 1;
     advance();
+    const retired = before.size - S().allPlayers.filter((p) => before.has(p.id)).length;
+    res.retirements.push(retired);
+    if (detail) console.log(`  Retirements → ${next}: ${retired}`);
     const prog = measureProgress(before, stats, next);
     if (process.env.DIAG && detail) diag(before, stats, pool);
     res.progress.push(prog);
@@ -389,7 +467,11 @@ function runCareer(seed: number): CareerResult {
       );
       printTopYoung(stats, before);
     }
-    if (y <= 3) {
+    if (auctionTypeFor(S().currentSeason, S().settings) === 'Mega') {
+      megaRetention(seed);
+      const m = trackedAuction('Mega');
+      if (detail) printMoney(m);
+    } else {
       // Mini auction for the next season. CPUs released at the rollover; every kept
       // player is carried as a "retention" (what confirmMiniReleases does for the human).
       const st = S();
@@ -404,6 +486,7 @@ function runCareer(seed: number): CareerResult {
       const a = auctionYouth(S().currentSeason);
       res.auctions.push(a);
       if (detail) {
+        printMoney(moneyLog[moneyLog.length - 1]);
         console.log(
           `  Mini auction ${a.season}: wonderkids ${a.wonderkids} · hot prospects ${a.hot} · ready-now ${a.ready} · domestic breakouts ${a.domestic} · youth sold ${(a.soldPct * 100).toFixed(0)}% · wonderkid median ₹${(median(a.wonderkidPrices) / 100).toFixed(2)} Cr [${a.wonderkidPrices.map((p) => (p / 100).toFixed(1)).join(', ')}] · hot median ₹${(median(a.hotPrices) / 100).toFixed(2)} Cr`
         );
@@ -411,8 +494,7 @@ function runCareer(seed: number): CareerResult {
     }
   }
   snap();
-  const finalById = new Map(S().allPlayers.map((p) => [p.id, p]));
-  res.youngRisers = startYoung.filter((id) => (finalById.get(id)?.ratings.overall ?? 0) >= 80).length;
+  res.money = [...moneyLog];
   if (process.env.DIAG && detail) {
     const tr = traces;
     const rows = startYoung
@@ -433,10 +515,11 @@ const results = SEEDS.map(runCareer);
 const all = <T,>(f: (r: CareerResult) => T[]) => results.flatMap(f);
 
 console.log('\n================ PASS / FAIL (averaged over seeds ' + SEEDS.join(', ') + ') ================');
+console.log('(progression criteria: first cycle, 3 progressions; money criteria: both cycles)');
 const rows: [string, boolean, string][] = [];
 const check = (name: string, ok: boolean, detail: string) => rows.push([name, ok, detail]);
 
-for (let y = 0; y < 4; y++) {
+for (let y = 0; y < Math.min(4, results[0].bands.length); y++) {
   const avg = Object.fromEntries(BANDS.map((b) => [b, mean(results.map((r) => r.bands[y][b]))])) as Record<Band, number>;
   const bad = BANDS.filter((b) => avg[b] < TARGETS[b][0] - 0.5 || avg[b] > TARGETS[b][1] + 0.5);
   const size = BANDS.reduce((t, b) => t + avg[b], 0);
@@ -444,23 +527,23 @@ for (let y = 0; y < 4; y++) {
 }
 const drift = mean(results.map((r) => Math.max(...r.means) - Math.min(...r.means)));
 check('League mean drift ≤ ±1.0', drift <= 2.0 && mean(results.map((r) => Math.abs(r.means[3] - r.means[0]))) <= 1.0, `S1→S4 ${mean(results.map((r) => r.means[3] - r.means[0])).toFixed(2)}, max range ${drift.toFixed(2)}`);
-const sg = all((r) => r.progress.flatMap((p) => p.strongGain));
-const sp = all((r) => r.progress.flatMap((p) => p.strongPot));
+const sg = all((r) => r.progress.slice(0, 3).flatMap((p) => p.strongGain));
+const sp = all((r) => r.progress.slice(0, 3).flatMap((p) => p.strongPot));
 check('Strong young season: +5..+10 OVR', mean(sg) >= 5 && mean(sg) <= 10, `mean +${mean(sg).toFixed(1)} (n=${sg.length}), ${((sg.filter((g) => g >= 5 && g <= 10).length / Math.max(1, sg.length)) * 100).toFixed(0)}% in range`);
 check('Strong young season: +3..+6 POT', mean(sp) >= 3 && mean(sp) <= 6, `mean +${mean(sp).toFixed(1)}`);
-const bo = all((r) => r.progress.map((p) => p.breakouts));
+const bo = all((r) => r.progress.slice(0, 3).map((p) => p.breakouts));
 check('Breakout Indian youngsters per season 8–15', mean(bo) >= 8 && mean(bo) <= 15, `mean ${mean(bo).toFixed(1)} [${bo.join(', ')}]`);
 const yr = results.map((r) => r.youngRisers);
 check('≥12 young Indians (<76 at S1) reach 80+ by S4', mean(yr) >= 12, `mean ${mean(yr).toFixed(1)} [${yr.join(', ')}]`);
-const pg = all((r) => r.progress.flatMap((p) => p.poorGain));
-const pp = all((r) => r.progress.flatMap((p) => p.poorPot));
+const pg = all((r) => r.progress.slice(0, 3).flatMap((p) => p.poorGain));
+const pp = all((r) => r.progress.slice(0, 3).flatMap((p) => p.poorPot));
 check('Poor young season: −2..−4 POT, little growth', !pp.length || (mean(pp) <= -2 && mean(pp) >= -4 && mean(pg) <= 2), `POT ${mean(pp).toFixed(1)}, OVR ${mean(pg).toFixed(1)} (n=${pp.length})`);
-const sr = all((r) => r.progress.map((p) => p.stallRate));
+const sr = all((r) => r.progress.slice(0, 3).map((p) => p.stallRate));
 check('Prospects who stall 10–20%', mean(sr) >= 0.1 && mean(sr) <= 0.2, `${(mean(sr) * 100).toFixed(1)}%`);
-const ig = all((r) => r.progress.flatMap((p) => p.idleGain));
-const ib = all((r) => r.progress.map((p) => p.idleBreakouts)).reduce((a, b) => a + b, 0);
+const ig = all((r) => r.progress.slice(0, 3).flatMap((p) => p.idleGain));
+const ib = all((r) => r.progress.slice(0, 3).map((p) => p.idleBreakouts)).reduce((a, b) => a + b, 0);
 check('0-match prospects: +0..+3, no breakouts', mean(ig) >= 0 && mean(ig) <= 3 && ib === 0, `mean +${mean(ig).toFixed(2)} (n=${ig.length}), breakouts ${ib}`);
-const dom = all((r) => r.progress.map((p) => p.domestic));
+const dom = all((r) => r.progress.slice(0, 3).map((p) => p.domestic));
 check('Domestic breakouts per off-season 8–15', mean(dom) >= 8 && mean(dom) <= 15, `mean ${mean(dom).toFixed(1)} [${dom.join(', ')}]`);
 const au = all((r) => r.auctions);
 check('Mini pool: 2–4 wonderkids', mean(au.map((a) => a.wonderkids)) >= 2 && mean(au.map((a) => a.wonderkids)) <= 4, `mean ${mean(au.map((a) => a.wonderkids)).toFixed(1)}`);
@@ -471,6 +554,17 @@ check('≥80% of wonderkids + hot prospects sold', mean(au.map((a) => a.soldPct)
 const wp = au.flatMap((a) => a.wonderkidPrices);
 const inBand = wp.filter((p) => p >= 100 && p <= 600).length / Math.max(1, wp.length);
 check('Wonderkid prices mostly ₹1–6 Cr', median(wp) >= 100 && median(wp) <= 600 && inBand >= 0.6, `median ₹${(median(wp) / 100).toFixed(2)} Cr, ${(inBand * 100).toFixed(0)}% in band (n=${wp.length})`);
+
+const megas = all((r) => r.money.filter((m) => m.type === 'Mega'));
+const minis = all((r) => r.money.filter((m) => m.type === 'Mini'));
+const megaLeft = megas.flatMap((m) => m.leftCr);
+check('Mega auctions: no team keeps ₹10 Cr+', megaLeft.filter((l) => l >= 10).length === 0, `mean left ₹${mean(megaLeft).toFixed(1)} Cr, max ₹${Math.max(...megaLeft).toFixed(1)} Cr, teams ≥₹10 Cr ${megaLeft.filter((l) => l >= 10).length}/${megaLeft.length}, spent ${(mean(megas.map((m) => m.spentPct)) * 100).toFixed(0)}%`);
+check('≤78 OVR (26+) at star money (₹6 Cr per ₹120 Cr purse), megas', mean(megas.map((m) => m.overpaidCount)) <= 1, `per mega ${mean(megas.map((m) => m.overpaidCount)).toFixed(1)}`);
+check('≤78 OVR (26+) at star money, minis', mean(minis.map((m) => m.overpaidCount)) <= 2, `per mini ${mean(minis.map((m) => m.overpaidCount)).toFixed(1)}, mini spend ${(mean(minis.map((m) => m.spentPct)) * 100).toFixed(0)}%`);
+const allMoney = [...megas, ...minis];
+check('No ≤74 OVR player sold for ₹5 Cr+ (any auction)', allMoney.every((m) => m.fadedCount === 0), `total ${allMoney.reduce((t, m) => t + m.fadedCount, 0)} across ${allMoney.length} auctions`);
+const ret = all((r) => r.retirements);
+check('Retirements per off-season (info)', true, `mean ${mean(ret).toFixed(1)} [${ret.join(', ')}]`);
 
 for (const [name, ok, detail] of rows) console.log(`${ok ? '✅ PASS' : '❌ FAIL'}  ${name.padEnd(48)} ${detail}`);
 console.log(`\n${rows.filter((r) => r[1]).length}/${rows.length} criteria pass · ${((Date.now() - t0) / 1000).toFixed(0)}s`);

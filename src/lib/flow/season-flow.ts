@@ -230,22 +230,25 @@ function canRevisit(step: FlowStep, s: FlowInput): boolean {
 // IPL seasons are named by the year they are played; the auction for a season is
 // held late in the PREVIOUS year (the IPL 2025 mega auction was in Nov 2024).
 //
-//  * Custom cycle ('custom'): your own 3-season cycle — mega auction before year 1,
-//    mini auctions before years 2 and 3.
+//  * Custom cycle ('custom'): two full 3-season cycles — mega auctions before years
+//    1 and 4, mini auctions in between. The second mega redistributes the youngsters
+//    the first cycle developed.
 //  * Real IPL cycle ('irl'): mirrors the real calendar. Mega auctions for IPL 2025,
 //    2028, 2031…; everything in between is a mini auction. The campaign joins the
-//    live cycle at IPL 2027 (its last mini year) and plays through the next full
-//    cycle (2028 mega, 2029-30 mini).
+//    live cycle at IPL 2027 (its last mini year) and plays through the next two full
+//    cycles (2028 and 2031 megas, minis in between) to IPL 2033.
 // ------------------------------------------------------------
 
 export type CycleMode = 'custom' | 'irl';
 
 /** First season of a real mega cycle (IPL 2025, auction Nov 2024). */
 export const IRL_MEGA_ANCHOR = 2025;
-/** Seasons in a custom campaign. */
-export const CAMPAIGN_SEASONS = 3;
+/** Seasons in one mega-auction cycle. */
+export const CYCLE_SEASONS = 3;
+/** Seasons in a custom campaign: two full cycles. */
+export const CAMPAIGN_SEASONS = 6;
 /** Real-cycle campaigns run until the end of the next full cycle after the start. */
-export const IRL_END_SEASON = 2030;
+export const IRL_END_SEASON = 2033;
 
 type CycleSettings = Pick<GameSettings, 'auctionType' | 'startingSeason'> & { cycleMode?: CycleMode };
 
@@ -273,7 +276,7 @@ export function irlAuctionType(season: number): AuctionType {
 /** Auction type that precedes a season. */
 export function auctionTypeFor(season: number, settings: CycleSettings): AuctionType {
   if (cycleModeOf(settings) === 'irl') return irlAuctionType(season);
-  return campaignYear(season, settings) <= 1 ? 'Mega' : 'Mini';
+  return (campaignYear(season, settings) - 1) % CYCLE_SEASONS === 0 ? 'Mega' : 'Mini';
 }
 
 /** The calendar year the auction for a season is held in (late in the previous year). */

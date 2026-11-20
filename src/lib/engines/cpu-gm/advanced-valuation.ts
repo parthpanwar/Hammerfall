@@ -22,7 +22,7 @@ import { analyzeUpcomingPool } from '../auction/dynamic-set-engine';
 import { xiGain } from './xi-value';
 import { getActiveGMProfile } from './personalities';
 import { PROGRESSION_TUNING } from '../career/progression-tuning';
-import { auctionMarketValue, iplPedigree, patienceMultiplier, singlePlayerCap, teamWealthFactor } from '../auction/market-value';
+import { auctionProgress, ratingPriceCeiling, auctionMarketValue, iplPedigree, patienceMultiplier, singlePlayerCap, teamWealthFactor } from '../auction/market-value';
 
 /**
  * How much the candidate lifts this squad's best XI (0 = he would not start).
@@ -183,9 +183,14 @@ export function calculateAdvancedSpendingLimit(
   // open slot than this player costs pays up for the good ones still on the board.
   const fillTo = session.auctionType === 'Mini' ? 21 : 22;
   const slotsToFill = Math.max(1, fillTo - franchise.players.length);
-  const progress = session.playerPool.length ? session.currentPlayerIndex / session.playerPool.length : 1;
+  const progress = auctionProgress(session);
   const perSlot = franchise.remainingPurse / slotsToFill;
   const pressure = Math.max(0, Math.min(0.5, Math.log2(perSlot / Math.max(60, marketVal)) * 0.12 * (0.5 + progress)));
+
+  // Mega-auction pacing: money left at the end of a mega is wasted. A team holding
+  // more per open slot than the remaining players cost bids up, harder as the
+  // auction runs out of players.
+  const pace = megaSpendPace(franchise, session, reserveNeeded, progress);
 
   let compositeValuation: number;
   if (xiGain > 0) {
@@ -194,11 +199,30 @@ export function calculateAdvancedSpendingLimit(
     if (ovr < 78 && upcomingAnalysis.betterPlayersRemainingInRole >= 2) {
       rawVal = Math.min(rawVal, marketVal * 1.1);
     }
-    compositeValuation = Math.round(rawVal);
+    compositeValuation = Math.round(rawVal * pace);
   } else {
     // Pure squad depth: strictly bounded to avoid overpaying for backups
-    const depthMax = Math.min(marketVal * (0.7 + pressure), budgetRatio * 1.4) * earlyAuctionDiscount;
+    // Mega pacing reaches quality squad players (impact subs, injury cover), never filler.
+    const depthPace = ovr >= PROGRESSION_TUNING.market.megaPace.qualityDepthOvr ? pace : 1;
+    const depthMax = Math.min(marketVal * (0.7 + pressure) * depthPace, budgetRatio * 1.4 * depthPace) * earlyAuctionDiscount;
     compositeValuation = Math.max(player.basePrice, Math.round(depthMax + depthGain * 6));
+  }
+
+  // Back half of a mega: money per open slot goes on the best players still on the
+  // board (starters or 76+), up to ~1.3× that per-slot money and never past 2× market.
+  if (session.auctionType === 'Mega' && progress >= PROGRESSION_TUNING.market.megaPace.lateFrom && (xiGain > 0 || ovr >= PROGRESSION_TUNING.market.megaPace.qualityDepthOvr)) {
+    const P = PROGRESSION_TUNING.market.megaPace;
+    const open = Math.max(1, P.fillTo - franchise.players.length);
+    const perSlot = Math.max(0, franchise.remainingPurse - reserveNeeded) / open;
+    if (isAmongBestRemaining(player, session)) {
+      compositeValuation = Math.max(compositeValuation, Math.round(Math.min(perSlot * P.lateSlotShare, marketVal * P.lateMaxOverMarket)));
+    }
+  }
+
+  // Players past 30 rated 80 or less are bought for what they are now: no bidding
+  // war over a former star's name.
+  if (player.age >= 30 && ovr <= 80) {
+    compositeValuation = Math.min(compositeValuation, Math.round(marketVal * PROGRESSION_TUNING.market.veteranBidCeiling));
   }
 
   // Prospects who have never played the IPL are punts: nobody gets into a cash-pressure
@@ -216,6 +240,8 @@ export function calculateAdvancedSpendingLimit(
   // A team that has just won several lots in a row eases off (budget review, the
   // board's nerves, rivals pricing them in) — no single franchise hoovers up a set.
   spendingLimit = Math.round(spendingLimit * haulDamping(franchise, session, player));
+  // Never more than the current rating can justify, whatever the name or the cash in hand.
+  spendingLimit = Math.min(spendingLimit, ratingPriceCeiling(player, session));
 
   // If squad still has fewer than 18 players, prioritize legal roster filling at base price
   let effectiveLimit = spendingLimit;
@@ -244,6 +270,68 @@ export function strategyFit(franchise: Franchise, player: Player): number {
   if (player.age <= 22 && player.ratings.potential >= 84 && traits.youthBias > 0) m *= 1 + traits.youthBias * (player.ratings.potential >= 88 ? 0.25 : 0.12);
   return Math.max(0.8, Math.min(1.3, m));
 }
+
+const slotCostCache = new Map<string, number>();
+
+/** What an open squad slot will cost from here: mean market value of the best players still to come, one per open slot league-wide. */
+function expectedSlotCost(session: AuctionSession): number {
+  const key = `${session.id}:${session.round}:${session.currentPlayerIndex}`;
+  const hit = slotCostCache.get(key);
+  if (hit !== undefined) return hit;
+  const fillTo = PROGRESSION_TUNING.market.megaPace.fillTo;
+  const open = session.franchises.reduce((t, f) => t + Math.max(0, fillTo - f.players.length), 0);
+  const values = session.playerPool
+    .slice(Math.max(0, session.currentPlayerIndex + 1))
+    .map((p) => auctionMarketValue(p, session))
+    .sort((a, b) => b - a)
+    .slice(0, Math.max(1, open));
+  const cost = Math.max(20, (values.reduce((t, v) => t + v, 0) + Math.max(0, open - values.length) * 20) / Math.max(1, open));
+  if (slotCostCache.size > 2000) slotCostCache.clear();
+  slotCostCache.set(key, cost);
+  return cost;
+}
+
+const bestCache = new Map<string, number>();
+
+/** Is this player among the best still to come (top half of the league's open slots, by market value)? */
+function isAmongBestRemaining(player: Player, session: AuctionSession): boolean {
+  const key = `${session.id}:${session.round}:${session.currentPlayerIndex}`;
+  let cut = bestCache.get(key);
+  if (cut === undefined) {
+    const fillTo = PROGRESSION_TUNING.market.megaPace.fillTo;
+    const open = session.franchises.reduce((t, f) => t + Math.max(0, fillTo - f.players.length), 0);
+    const values = session.playerPool
+      .slice(Math.max(0, session.currentPlayerIndex))
+      .map((p) => auctionMarketValue(p, session))
+      .sort((a, b) => b - a);
+    cut = values[Math.min(values.length - 1, Math.max(0, Math.floor(open * PROGRESSION_TUNING.market.megaPace.bestRemainingShare)))] ?? 0;
+    if (bestCache.size > 2000) bestCache.clear();
+    bestCache.set(key, cut);
+  }
+  return auctionMarketValue(player, session) >= cut;
+}
+
+/** ≥ 1: how much harder this team bids in a mega so its purse actually gets spent. */
+export function megaSpendPace(franchise: Franchise, session: AuctionSession, reserve: number, progress: number): number {
+  if (session.auctionType !== 'Mega') return 1;
+  const P = PROGRESSION_TUNING.market.megaPace;
+  const open = Math.max(1, P.fillTo - franchise.players.length);
+  const perSlot = Math.max(0, franchise.remainingPurse - reserve) / open;
+  const ratio = perSlot / expectedSlotCost(session);
+  const ratioPace = ratio <= 1 ? 1 : 1 + (Math.min(P.maxBoost, Math.pow(ratio, P.exponent)) - 1) * (0.4 + 0.6 * clamp01(progress));
+  // Spending schedule: stars come first, so a team should have spent about
+  // progress^0.75 of its auction money by now. Falling behind means bidding harder
+  // while good players are still on the board.
+  const spent = session.soldPlayers.filter((x) => x.franchiseId === franchise.id).reduce((t, x) => t + x.price, 0);
+  const budget = franchise.remainingPurse + spent - reserve;
+  if (budget <= 0) return ratioPace;
+  const target = budget * P.targetSpend * Math.pow(clamp01(progress), P.scheduleExponent);
+  const lag = (target - spent) / budget;
+  const lagPace = 1 + Math.max(0, Math.min(P.maxBoost - 1, lag * P.lagGain));
+  return Math.max(ratioPace, lagPace);
+}
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 /** Eases a franchise off after it has won 3+ of the last 6 lots (elite players exempt). */
 export function haulDamping(franchise: Franchise, session: AuctionSession, player: Player): number {

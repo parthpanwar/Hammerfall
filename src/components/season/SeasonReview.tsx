@@ -3,10 +3,16 @@
 import React, { useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { ArrowRight } from 'lucide-react';
-import { SeasonTransitionModal } from '@/components/career/SeasonTransitionModal';
 import { MButton, Modal, PageHeader, Panel, TeamCrest } from '@/components/mynba/primitives';
 import { auctionTypeFor, campaignLength, campaignYear, isFinalSeason } from '@/lib/flow/season-flow';
-import type { SeasonAward } from '@/lib/types/game';
+import type { SeasonAward, SeasonSummary } from '@/lib/types/game';
+
+/** This campaign's seasons only, one row per year (older saves may hold rows from earlier campaigns). */
+function campaignHonours(history: SeasonSummary[], startingSeason: number, currentSeason: number): SeasonSummary[] {
+  const byYear = new Map<number, SeasonSummary>();
+  for (const s of history) if (s.year >= startingSeason && s.year <= currentSeason) byYear.set(s.year, s);
+  return [...byYear.values()].sort((a, b) => a.year - b.year);
+}
 
 const AWARDS: { type: SeasonAward['type']; label: string; unit?: string; color: string }[] = [
   { type: 'OrangeCap', label: 'Orange Cap', unit: 'runs', color: '#C2561A' },
@@ -16,8 +22,13 @@ const AWARDS: { type: SeasonAward['type']; label: string; unit?: string; color: 
 ];
 
 export function SeasonReview() {
-  const { currentSeason, seasonAwards, seasonHistory, humanFranchiseId, franchises, standings, playoffFixtures, settings } = useGameStore();
-  const [isTransitionOpen, setIsTransitionOpen] = useState(false);
+  const { currentSeason, seasonAwards, seasonHistory: allHistory, humanFranchiseId, franchises, standings, playoffFixtures, settings, advanceSeason, setPhase } = useGameStore();
+  // Advancing develops players and retires veterans; the recap slides then show those results.
+  const seasonHistory = campaignHonours(allHistory, settings.startingSeason, currentSeason);
+  const startOffseason = () => {
+    advanceSeason();
+    setPhase('Retention');
+  };
   const [summaryOpen, setSummaryOpen] = useState(false);
   const final = isFinalSeason(currentSeason, settings);
   const year = campaignYear(currentSeason, settings);
@@ -46,7 +57,7 @@ export function SeasonReview() {
               Finish campaign <ArrowRight className="w-4 h-4" />
             </MButton>
           ) : (
-            <MButton variant="primary" size="lg" onClick={() => setIsTransitionOpen(true)}>
+            <MButton variant="primary" size="lg" onClick={startOffseason}>
               Start IPL {currentSeason + 1} offseason <ArrowRight className="w-4 h-4" />
             </MButton>
           )
@@ -134,7 +145,6 @@ export function SeasonReview() {
         </Panel>
       )}
 
-      <SeasonTransitionModal isOpen={isTransitionOpen} onClose={() => setIsTransitionOpen(false)} />
       <CampaignSummary open={summaryOpen} onClose={() => setSummaryOpen(false)} />
     </div>
   );
@@ -146,9 +156,10 @@ function ordinal(n: number) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-/** End of the 3-season cycle: results, titles and the moves you made. */
+/** End of the campaign: results, titles and the moves you made. */
 function CampaignSummary({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { seasonHistory, humanFranchiseId, franchises, careerState, saveGame, returnToMainMenu, settings } = useGameStore();
+  const { seasonHistory: allHistory, currentSeason, humanFranchiseId, franchises, careerState, saveGame, returnToMainMenu, settings } = useGameStore();
+  const seasonHistory = campaignHonours(allHistory, settings.startingSeason, currentSeason);
   const human = franchises.find((f) => f.id === humanFranchiseId);
   const titles = seasonHistory.filter((s) => s.championId === human?.name).length;
   const myTrades = (careerState.trade?.history ?? []).filter((t) => t.franchiseIds.includes(humanFranchiseId)).length;

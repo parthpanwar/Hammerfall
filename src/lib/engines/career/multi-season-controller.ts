@@ -49,7 +49,7 @@ export function executeSeasonAdvance(
   const nextSeason = currentSeason + 1;
   // One campaign = one mega cycle: year 1 mega, years 2-3 mini.
   const upcomingAuctionType = auctionTypeFor(nextSeason, gameState.settings);
-  const newLeaguePurse = getLeaguePurseForSeason(nextSeason);
+  const newLeaguePurse = getLeaguePurseForSeason(nextSeason, gameState.settings);
 
   // 1. Identify Champion and Runner-up
   const finalMatch = gameState.playoffFixtures.find((f) => f.playoffType === 'Final' && f.isCompleted);
@@ -113,7 +113,7 @@ export function executeSeasonAdvance(
   if (Object.keys(currentContracts).length === 0) {
     currentContracts = createInitialContracts(gameState.franchises, currentSeason, 'Mega');
   }
-  const advancedContracts = advanceContractsForNewSeason(currentContracts, nextSeason);
+  const advancedContracts = advanceContractsForNewSeason(currentContracts, nextSeason, upcomingAuctionType);
 
   // 7. Dynamic Storylines Generation
   const newStorylines = generateSeasonStorylines(
@@ -164,13 +164,16 @@ export function executeSeasonAdvance(
         franchise.id === championId
       );
 
-      const cpuDecisions = executeCpuPreAuctionDecisions(
-        syncedFranchise,
-        upcomingAuctionType,
-        updatedContractsPostAuction,
-        postMortem,
-        nextSeason
-      );
+      // Mega years: CPUs keep their squads into Retention Day, where every franchise
+      // retains under that season's slabs (see RetentionView / getMegaRetentionRules).
+      const cpuDecisions =
+        upcomingAuctionType === 'Mega'
+          ? {
+              updatedFranchise: { ...syncedFranchise, gmPersonality: postMortem.adjustedGMPersonality, retainedPlayers: [], remainingPurse: newLeaguePurse },
+              updatedContracts: updatedContractsPostAuction,
+              releasedPlayers: [] as Player[],
+            }
+          : executeCpuPreAuctionDecisions(syncedFranchise, upcomingAuctionType, updatedContractsPostAuction, postMortem, nextSeason);
 
       // Review the season and draw up next window's auction plan.
       const review = planNextStrategy(

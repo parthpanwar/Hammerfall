@@ -35,7 +35,8 @@ import {
   evaluateFranchiseFit,
 } from '../../intelligence/valuation/player-intelligence';
 import type { PlayerIntelligenceDossier } from '../../intelligence/types';
-import { unflooredMarketValue } from '../auction/market-value';
+import { auctionProgress, unflooredMarketValue } from '../auction/market-value';
+import { PROGRESSION_TUNING } from '../career/progression-tuning';
 import { strategyFit } from './advanced-valuation';
 import {
   getFranchiseActivePersonality,
@@ -413,7 +414,15 @@ export function decideCPUBid(
   // Full on roles and no better than what's there: pass. A clear XI upgrade is
   // still worth a bid even when the squad is legally complete (mini auctions).
   // Money in the bank still buys a quality squad player (injury cover, rotation).
-  const cashRichQuality = franchise.remainingPurse >= 800 && player.ratings.overall >= 74 && franchise.players.length < 24;
+  const D = PROGRESSION_TUNING.market.megaDepth;
+  const cashRichQuality =
+    (franchise.remainingPurse >= 800 && player.ratings.overall >= 74 && franchise.players.length < 24) ||
+    // Mega money left unspent is wasted: keep adding useful players.
+    (session.auctionType === 'Mega' &&
+      auctionProgress(session) >= D.fromProgress &&
+      franchise.remainingPurse >= D.minPurse &&
+      player.ratings.overall >= D.minOvr &&
+      franchise.players.length < D.maxSquad);
   if (tacticalNeed === 0 && xiImprovement === 0 && !devPick && !cashRichQuality && franchise.players.length >= franchise.minSquadSize) {
     const reason = 'No tactical role deficit; squad depth satisfied.';
     recordDecisionLog(session.id, {
@@ -435,7 +444,7 @@ export function decideCPUBid(
   // Overseas slots are for players who start. A bench overseas player only makes
   // sense late, as cover — never as the 5th–8th overseas name in the opening sets.
   const overseasHeld = franchise.players.filter((p) => p.nationality === 'Overseas').length;
-  const progress = session.playerPool.length ? session.currentPlayerIndex / session.playerPool.length : 1;
+  const progress = auctionProgress(session);
   // Overseas buying is paced across the auction: the eight slots are not all spent
   // in the opening sets (clear stars excepted).
   const overseasAllowed = Math.min(franchise.maxOverseas ?? 8, 4 + Math.floor(progress * 10));
@@ -451,7 +460,7 @@ export function decideCPUBid(
   // Squads that are already deep stop buying backups and keep the money for
   // genuine upgrades (real minis end around 21–23 players, megas 23–25).
   // A team still sitting on ₹8 Cr+ keeps adding useful players rather than bank it.
-  const depthCeiling = session.auctionType === 'Mini' ? (franchise.remainingPurse >= 800 ? 24 : 22) : 24;
+  const depthCeiling = session.auctionType === 'Mini' ? (franchise.remainingPurse >= 800 ? 24 : 22) : franchise.remainingPurse >= D.minPurse ? D.maxSquad : 24;
   if (xiImprovement === 0 && franchise.players.length >= depthCeiling && !(devPick && franchise.players.length < 24)) {
     const reason = `Squad already ${franchise.players.length} deep; saving purse for upgrades.`;
     recordDecisionLog(session.id, { ...logBase, maxValuationLakhs: 0, decision: 'PASS', reason });

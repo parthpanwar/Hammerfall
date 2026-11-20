@@ -36,18 +36,20 @@ export function calculateRetirementProbability(
   let baseProb = 0.0;
   let primaryReason: RetirementRecord['reason'] = 'Age';
 
+  // Slower than before: careers now run two auction cycles, and T20 specialists
+  // play on into their late thirties.
   if (age === 33 || age === 34) {
-    baseProb = 0.03;
+    baseProb = 0.02;
   } else if (age === 35 || age === 36) {
-    baseProb = 0.12;
+    baseProb = 0.07;
   } else if (age === 37 || age === 38) {
-    baseProb = 0.32;
+    baseProb = 0.2;
   } else if (age === 39 || age === 40) {
-    baseProb = 0.60;
+    baseProb = 0.42;
   } else if (age === 41 || age === 42) {
-    baseProb = 0.82;
+    baseProb = 0.68;
   } else {
-    baseProb = 0.95; // 43+
+    baseProb = 0.9; // 43+
   }
 
   // Elite longevity exemption discount
@@ -60,7 +62,7 @@ export function calculateRetirementProbability(
     player.role === 'Bowler' &&
     (player.bowlingStyle.includes('Fast') || player.bowlingStyle.includes('Medium'));
   if (isFastBowler) {
-    baseProb += 0.08;
+    baseProb += 0.05;
     primaryReason = 'Fitness';
   }
 
@@ -76,12 +78,12 @@ export function calculateRetirementProbability(
       baseProb -= 0.20; // Had an amazing season, motivated to continue!
     } else if (seasonStats.runs < 100 && seasonStats.wickets < 5 && seasonStats.matches >= 7) {
       // Struggled with form
-      baseProb += 0.15;
+      baseProb += 0.1;
       primaryReason = 'Performance';
     }
   } else {
     // Unsold or completely benched (0 matches in IPL)
-    baseProb += 0.25;
+    baseProb += 0.12;
     primaryReason = 'Unsold';
   }
 

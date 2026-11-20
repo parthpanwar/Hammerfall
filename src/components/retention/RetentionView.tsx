@@ -6,7 +6,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
-import { RETENTION_RULES_2026 } from '@/lib/data/retention-rules';
+import { RETENTION_RULES_2026, getMegaRetentionRules } from '@/lib/data/retention-rules';
 import { seasonLabel } from '@/lib/flow/season-flow';
 import { validateRetention, cpuRetentionDecisions } from '@/lib/engines/retention-engine';
 import { formatPrice } from '@/lib/utils';
@@ -70,7 +70,7 @@ export function RetentionView() {
 
   const human = franchises.find((f) => f.id === humanFranchiseId);
   const rules: RetentionRule = useMemo(
-    () => ({ ...RETENTION_RULES_2026, totalPurse: human?.totalPurse ?? RETENTION_RULES_2026.totalPurse }),
+    () => getMegaRetentionRules(human?.totalPurse ?? RETENTION_RULES_2026.totalPurse),
     [human?.totalPurse]
   );
 
@@ -130,7 +130,7 @@ export function RetentionView() {
     const rng = createSeededRandom(settingsSeed + retentionDecisions.length + 1);
     let all: RetentionDecision[] = [...mine];
     for (const cpu of franchises.filter((f) => f.id !== humanFranchiseId)) {
-      const cpuRules = { ...RETENTION_RULES_2026, totalPurse: cpu.totalPurse };
+      const cpuRules = getMegaRetentionRules(cpu.totalPurse);
       const decisions = cpuRetentionDecisions(cpu, cpuRules, rng);
       all = all.concat(decisions);
       const kept = cpu.players.filter((p) => decisions.some((d) => d.playerId === p.id));
