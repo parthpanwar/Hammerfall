@@ -19,9 +19,9 @@ export const PROGRESSION_TUNING = {
   // ---- Growth (ages ≤ 28 with headroom) ----
   /** Share of headroom (potential − overall) closed per year, by age. */
   ageRate: [
-    { maxAge: 20, rate: 0.34 },
-    { maxAge: 22, rate: 0.3 },
-    { maxAge: 24, rate: 0.25 },
+    { maxAge: 20, rate: 0.42 },
+    { maxAge: 22, rate: 0.38 },
+    { maxAge: 24, rate: 0.3 },
     { maxAge: 27, rate: 0.16 },
     { maxAge: 28, rate: 0.08 },
   ],
@@ -62,6 +62,42 @@ export const PROGRESSION_TUNING = {
   /** Older players without IPL cricket: no visible leap. */
   benchCapOlder: 3,
 
+  // ---- Hidden ceiling: potential is the scouts' guess, the ceiling is the truth ----
+  ceiling: {
+    /** Only players with this much headroom and at most this age get a drawn ceiling. */
+    minHeadroom: 3,
+    maxAge: 28,
+    /** Chance the scouts are right and he reaches his potential, by potential. */
+    starChance: [
+      { minPot: 90, chance: 0.3 },
+      { minPot: 86, chance: 0.2 },
+      { minPot: 0, chance: 0.1 },
+    ],
+    /** Good players: close this share of the headroom, never above cap. */
+    goodChance: 0.3,
+    good: { share: [0.5, 0.85] as [number, number], cap: 81 }, // just under tier 2 (82+)
+    /** Everyone else: a useful squad player at best. */
+    ordinary: { share: [0.25, 0.55] as [number, number], cap: 79 },
+    /** An outstanding season lifts the true ceiling a little (never past potential). */
+    overachieve: { minPerf: 0.8, minMatches: 8, chance: 0.35, gain: [1, 2] as [number, number] },
+    /** Once a player stops growing, scouts cut the public potential toward the truth. */
+    revision: { minAge: 21, gap: 4, loss: [1, 3] as [number, number] },
+    /** Growth bonuses from a good season shrink to nothing as he nears his ceiling. */
+    bonusRoom: 3,
+  },
+
+  // ---- Overseas: they play all year (internationals, BBL, SA20, The Hundred…) ----
+  overseas: {
+    /** IPL-equivalent game time from cricket away from the IPL. */
+    awayMatches: { capped: 10, uncapped: 6 },
+    /** Away season output: (overall − base) / scale + noise. */
+    awayPerf: { mean: 0.15, noise: 0.6 },
+    /** Breakouts in their home T20 leagues. */
+    breakout: { cap: 5, chance: 0.08, maxAge: 26, minRoom: 4, jump: [3, 6] as [number, number] },
+    /** Stalwarts hold their level while they keep producing. */
+    stalwart: { untilAge: 37, clamp: [-2, 1] as [number, number], drift: 0.3, driftFrom33: 0.9 },
+  },
+
   // ---- Elite compression: each raw point gained above a level counts less ----
   compression: [
     { above: 91, weight: 0.25 },
@@ -77,10 +113,10 @@ export const PROGRESSION_TUNING = {
     noMatches: { minAge: 22, loss: [0, 2] as [number, number] },
     /** potential ≥ newOverall + floor, by (new) age. */
     floorByAge: [
-      { maxAge: 19, floor: 6 },
-      { maxAge: 21, floor: 5 },
-      { maxAge: 23, floor: 4 },
-      { maxAge: 25, floor: 2 },
+      { maxAge: 19, floor: 4 },
+      { maxAge: 21, floor: 3 },
+      { maxAge: 23, floor: 2 },
+      { maxAge: 25, floor: 1 },
     ],
     cap: 97,
     convergeFromAge: 29,
@@ -106,16 +142,18 @@ export const PROGRESSION_TUNING = {
 
   // ---- Domestic breakouts ----
   domestic: {
-    cap: 15,
-    baseChance: 0.07,
-    headroomBonus: 0.04, // headroom ≥ 8
-    youthBonus: 0.02, // age ≤ 23
+    cap: 5,
+    baseChance: 0.035,
+    headroomBonus: 0.02, // headroom ≥ 8
+    youthBonus: 0.01, // age ≤ 23
     minAge: 19,
     maxAge: 27,
     lateBloomerMaxAge: 29,
-    jump: [5, 10] as [number, number],
-    potGain: [2, 5] as [number, number],
-    ovrCap: 84,
+    jump: [3, 7] as [number, number],
+    potGain: [1, 3] as [number, number],
+    ovrCap: 80,
+    /** Only players whose true ceiling leaves this much room can break out. */
+    minRoom: 4,
   },
 
   // ---- In-season form and selection ----
@@ -172,6 +210,8 @@ export const PROGRESSION_TUNING = {
     /** Bid ceiling: rating-curve price at (current overall + margin) × multiplier × inflation. */
     ceilingOvrMargin: 3,
     ceilingMultiplier: 1.0,
+    /** Tier-5 overseas backups: cover for a starter or a young international to groom. */
+    overseasBackup: { minStarters: 3, maxHeld: 3, minOvr: 72, megaFrom: 0.5, coverCap: 150, groomerCap: 300 },
     /** Mega price index never opens below this. */
     megaIndexFloor: 1.2,
     /** Late in a mega, a team still holding this much keeps buying useful squad players (OVR ≥ minOvr). */

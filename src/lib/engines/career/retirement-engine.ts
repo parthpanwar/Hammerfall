@@ -6,6 +6,7 @@
 
 import type { Player, PlayerSeasonStats } from '@/lib/types/game';
 import type { RetirementRecord, PlayerCareerRecord } from '@/lib/types/career';
+import { isStalwart } from './overseas-pipeline';
 
 // Master veterans with extreme passion / longevity
 const HIGH_LONGEVITY_VETERANS = new Set([
@@ -53,7 +54,7 @@ export function calculateRetirementProbability(
   }
 
   // Elite longevity exemption discount
-  if (HIGH_LONGEVITY_VETERANS.has(player.id)) {
+  if (HIGH_LONGEVITY_VETERANS.has(player.id) || isStalwart(player.id)) {
     baseProb *= 0.45; // Significantly lower retirement chance for legends like Dhoni/Kohli/Rohit
   }
 

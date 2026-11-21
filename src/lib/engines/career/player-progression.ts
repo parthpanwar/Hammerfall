@@ -8,10 +8,46 @@ import type { DevelopmentTrend, DevProfile, Player, PlayerSeasonStats } from '@/
 import type { PlayerProgressionDelta } from '@/lib/types/career';
 import { calculateAgeTrajectory } from '@/lib/intelligence/models/age-curve';
 import { PROGRESSION_TUNING, lookup } from './progression-tuning';
-import { devProfileOf, playerRng } from './dev-rng';
+import { devProfileOf, hashString, mulberry32, playerRng } from './dev-rng';
+import { isStalwart, risingStarCeiling } from './overseas-pipeline';
 
 const T = PROGRESSION_TUNING;
 const r1 = (rng: () => number, [lo, hi]: [number, number]) => lo + Math.round(rng() * (hi - lo));
+
+/**
+ * The level a player really tops out at. Potential is the scouts' public guess;
+ * only a few prospects reach it. Most good youngsters settle in the high 70s or
+ * low 80s, and a wonderkid is a real chance of a star, not a certainty. Drawn
+ * per career (seeded) so it can't be learned from one save to the next, and
+ * kept on the player once drawn. Overseas rising stars have a fixed ceiling.
+ */
+export function hiddenCeiling(p: Player, seed = 0): number {
+  if (p.ceiling !== undefined) return p.ceiling;
+  const { overall, potential } = p.ratings;
+  const star = risingStarCeiling(p.id);
+  if (star !== undefined) return Math.max(overall, star);
+  const C = T.ceiling;
+  const head = potential - overall;
+  if (head < C.minHeadroom || p.age > C.maxAge) return potential;
+  const rng = mulberry32((hashString(`${p.id}:ceiling`) ^ Math.imul(seed | 0, 2654435761)) >>> 0);
+  const u = rng();
+  const v = rng();
+  const starChance = lookup(C.starChance, (r) => potential >= r.minPot, C.starChance[C.starChance.length - 1]).chance;
+  if (u < starChance) return potential;
+  const band = u < starChance + C.goodChance ? C.good : C.ordinary;
+  const share = band.share[0] + v * (band.share[1] - band.share[0]);
+  // A cap below his current level just means he has already peaked.
+  return Math.max(overall, Math.min(band.cap, overall + Math.round(head * share)));
+}
+
+/** Overseas players play all year: internationals and the T20 leagues. */
+function awaySeason(p: Player, rng: () => number): { matches: number; perf: number } | null {
+  if (p.nationality !== 'Overseas' || p.isRetired) return null;
+  const O = T.overseas;
+  const matches = p.status === 'Capped' ? O.awayMatches.capped : O.awayMatches.uncapped;
+  const perf = clamp(O.awayPerf.mean + (rng() * 2 - 1) * O.awayPerf.noise, -1, 1.2);
+  return { matches, perf };
+}
 
 /** Development multiplier from the hidden profile at this age. */
 function profileMultiplier(profile: DevProfile, age: number): number {
@@ -68,10 +104,18 @@ export function progressPlayerAttributes(
 
   const rng = playerRng(player.id, seasonYear, seed);
   const luck = rng() * 2 - 1; // coaching, fitness, role, confidence
-  const perf = seasonPerformance(player, recentSeasonStats);
-  const matches = recentSeasonStats?.matches ?? 0;
+  const iplPerf = seasonPerformance(player, recentSeasonStats);
+  const iplMatches = recentSeasonStats?.matches ?? 0;
+  // Overseas players are judged on their whole year unless the IPL was most of it.
+  const away = awaySeason(player, rng);
+  const fromAway = !!away && iplMatches < 6;
+  const perf = fromAway ? (iplPerf === null ? away.perf : (iplPerf + away.perf) / 2) : iplPerf;
+  const matches = fromAway ? Math.max(iplMatches, away.matches) : iplMatches;
   const p0 = perf ?? 0;
-  const headroom = Math.max(0, potential - previousOverall);
+  // Growth chases the hidden ceiling, not the scouts' potential.
+  let ceiling = hiddenCeiling(player, seed);
+  const headroom = Math.max(0, ceiling - previousOverall);
+  const bonusScale = clamp(headroom / T.ceiling.bonusRoom, 0, 1);
   const profile = devProfileOf(player);
   const prevMatches = player.development?.matches; // undefined = unknown (season 1 / old save)
   const indianCapped = player.nationality === 'Indian' && player.status === 'Capped';
@@ -86,14 +130,23 @@ export function progressPlayerAttributes(
     // ---- Growth: close a share of the headroom ----
     const ageRate = lookup(T.ageRate, (r) => age <= r.maxAge, { maxAge: 99, rate: 0 }).rate;
     const playMult = lookup(T.playMult, (r) => matches >= r.minMatches, { minMatches: 0, mult: 0.35 }).mult;
-    const perfBonus = perf === null ? 0 : lookup(T.perfBonus, (r) => perf >= r.minPerf, T.perfBonus[T.perfBonus.length - 1]).bonus;
+    let perfBonus = perf === null ? 0 : lookup(T.perfBonus, (r) => perf >= r.minPerf, T.perfBonus[T.perfBonus.length - 1]).bonus;
+    if (perfBonus > 0) perfBonus *= bonusScale; // a great season can't carry him past his ceiling
     const raw = headroom * ageRate * playMult * profileMultiplier(profile, age) + perfBonus + luck * T.luck;
     let [lo, hi] = age <= 24 ? T.clampYoung : age <= 27 ? T.clampMid : T.clamp28;
     const leap = T.breakoutLeap;
-    if (matches >= leap.minMatches && perf !== null && perf >= leap.minPerf && age <= leap.maxAge) hi = Math.max(hi, leap.maxGain);
-    if (matches === 0) [lo, hi] = age >= 25 ? T.noMatchGainOlder : headroom > 0 ? T.noMatchGain : [-1, 1];
+    if (matches >= leap.minMatches && perf !== null && perf >= leap.minPerf && age <= leap.maxAge && headroom >= 6) hi = Math.max(hi, leap.maxGain);
+    if (matches === 0) [lo, hi] = age >= 25 ? T.noMatchGainOlder : headroom > 0 ? [T.noMatchGain[0], Math.min(T.noMatchGain[1], headroom)] : [-1, 1];
+    hi = Math.min(hi, headroom + (luck > 0.6 ? 1 : 0)); // at the ceiling he only holds
+    lo = Math.min(lo, hi);
     change = Math.round(clamp(raw, lo, hi));
     if (age > 24 && matches < 4) change = Math.min(change, T.benchCapOlder);
+
+    // An outstanding season can lift the true ceiling a little.
+    const O = T.ceiling.overachieve;
+    if (perf !== null && perf >= O.minPerf && matches >= O.minMatches && ceiling < potential && rng() < O.chance) {
+      ceiling = Math.min(potential, ceiling + r1(rng, O.gain));
+    }
 
     // ---- Potential moves with the evidence ----
     const P = T.potential;
@@ -108,6 +161,13 @@ export function progressPlayerAttributes(
       potentialChange = -r1(rng, P.noMatches.loss);
     }
     if (profile === 'Plateau' && age >= 22 && p0 < 0.6) potentialChange -= 1;
+    // Near his real ceiling a big season earns less optimism…
+    if (potentialChange > 0 && headroom < 3) potentialChange = Math.min(potentialChange, 1);
+    // …and once he stops growing the scouts revise the projection toward the truth.
+    const R = T.ceiling.revision;
+    if (age >= R.minAge && potential - ceiling >= R.gap && previousOverall + change >= ceiling) {
+      potentialChange = Math.min(potentialChange, 0) - r1(rng, R.loss);
+    }
 
     // Some prospects simply never kick on.
     if (age >= 19 && headroom >= 4 && p0 < 0.4 && rng() < T.bust.chance) {
@@ -116,6 +176,11 @@ export function progressPlayerAttributes(
       potentialChange = Math.min(potentialChange, -r1(rng, T.bust.potLoss));
     }
     note = age <= 23 ? 'Young talent developing' : 'Entering prime career years';
+  } else if (isStalwart(player.id) && age < T.overseas.stalwart.untilAge && p0 >= -0.2) {
+    // A franchise cornerstone: holds his level while he keeps producing.
+    const W = T.overseas.stalwart;
+    change = clamp(Math.round(p0 * 0.8 - (age >= 33 ? W.driftFrom33 : W.drift) + luck * 0.6), W.clamp[0], W.clamp[1]);
+    note = 'Still a franchise cornerstone';
   } else if (trajectory.careerPhase === 'VeteranMaster') {
     if (trajectory.isOver35Exempt) {
       change = clamp(Math.round(p0 * 0.6 - 0.5), -2, 1);
@@ -167,6 +232,8 @@ export function progressPlayerAttributes(
   let newPotential = potential + potentialChange - (newAge >= P.convergeFromAge ? 1 : 0);
   const floor = lookup(P.floorByAge, (r) => newAge <= r.maxAge, { maxAge: 99, floor: 0 }).floor;
   newPotential = Math.max(newOverall, Math.min(P.cap, Math.max(newOverall + floor, newPotential)));
+  // The public projection never sits below what he really is going to be.
+  if (newPotential < ceiling && growthPath) newPotential = Math.min(P.cap, ceiling);
   const potentialDelta = newPotential - potential;
 
   const trend: DevelopmentTrend = bust
@@ -182,7 +249,9 @@ export function progressPlayerAttributes(
     : newAge <= 25 && d <= 0 && potentialDelta < 0
     ? 'Stalled'
     : 'Steady';
-  note = developmentNote(trend, player, recentSeasonStats, note);
+  note = fromAway && (trend === 'Breakout' || trend === 'Rising')
+    ? trend === 'Breakout' ? `Big year for ${player.country} and in the T20 leagues: ceiling raised` : `Kept improving with ${player.country} and in the T20 leagues`
+    : developmentNote(trend, player, recentSeasonStats, note);
 
   const estimatedMarketValue = Math.round(
     Math.max(20, (newOverall - 55) * (newOverall - 55) * (newAge <= 27 ? 1.4 : newAge <= 33 ? 1.0 : 0.7))
@@ -192,6 +261,7 @@ export function progressPlayerAttributes(
     ...player,
     age: newAge,
     devProfile: profile,
+    ceiling: Math.max(ceiling, newOverall),
     ratings: {
       ...player.ratings,
       overall: newOverall,
@@ -204,7 +274,7 @@ export function progressPlayerAttributes(
     estimatedMarketValue,
     recentForm: 75, // Reset to standard pre-season baseline
     seasonForm: undefined,
-    development: { season: seasonYear, trend, overallDelta: d, potentialDelta, note, matches, perf },
+    development: { season: seasonYear, trend, overallDelta: d, potentialDelta, note, matches: iplMatches, perf: iplPerf },
   };
 
   const delta: PlayerProgressionDelta = {
@@ -249,6 +319,7 @@ export function progressAllPlayers(
   }
 
   applyDomesticBreakouts(updatedPlayers, deltas, seasonStats, nextSeasonYear, seed);
+  applyOverseasBreakouts(updatedPlayers, deltas, seasonStats, nextSeasonYear, seed);
   applyIndiaCallUps(updatedPlayers, deltas, seasonStats, nextSeasonYear);
   return { updatedPlayers, deltas };
 }
@@ -328,6 +399,7 @@ function applyDomesticBreakouts(
     if (age < D.minAge || age > maxAge) return;
     if ((stats[p.id]?.matches ?? 0) >= 4) return; // regular IPL players are judged on IPL output
     if (p.ratings.overall >= D.ovrCap) return;
+    if (hiddenCeiling(p, seed) - p.ratings.overall < D.minRoom) return; // nothing left to unlock
     const r = playerRng(p.id, season, seed + 7);
     const head = p.ratings.potential - p.ratings.overall;
     const chance = D.baseChance + (head >= 8 ? D.headroomBonus : 0) + (age <= 23 ? D.youthBonus : 0);
@@ -340,7 +412,7 @@ function applyDomesticBreakouts(
     const r = playerRng(p.id, season, seed + 11);
     // Bigger jumps from lower down: a 64 can become a 73, a 78 becomes an 83.
     const jump = clamp(Math.round(D.jump[0] + r() * 3 + Math.max(0, 72 - p.ratings.overall) * 0.35), D.jump[0], D.jump[1]);
-    const overall = Math.min(D.ovrCap, p.ratings.overall + jump);
+    const overall = Math.min(D.ovrCap, hiddenCeiling(p, seed), p.ratings.overall + jump);
     const potential = Math.min(T.potential.cap, Math.max(overall + 3, p.ratings.potential + r1(r, D.potGain)));
     const d = overall - p.ratings.overall;
     const note = DOMESTIC_LINES[p.role](r);
@@ -368,6 +440,69 @@ function applyDomesticBreakouts(
         trend: 'Domestic breakout',
         progressionNote: note,
       };
+    }
+  }
+}
+
+const LEAGUE: Record<string, string> = {
+  Australia: 'the Big Bash',
+  England: 'The Hundred',
+  'South Africa': 'the SA20',
+  'West Indies': 'the CPL',
+  'New Zealand': 'the Super Smash',
+  Afghanistan: 'the ILT20',
+  'Sri Lanka': 'the LPL',
+  Bangladesh: 'the BPL',
+  Pakistan: 'the PSL',
+};
+
+/**
+ * The overseas off-season: a few young internationals who sat out (or barely
+ * played) the IPL have a big year at home and arrive at the auction as targets.
+ * Shares the "Domestic breakout" tag, so the auction flags them the same way.
+ */
+function applyOverseasBreakouts(
+  players: Player[],
+  deltas: PlayerProgressionDelta[],
+  stats: Record<string, PlayerSeasonStats>,
+  season: number,
+  seed: number
+) {
+  const B = T.overseas.breakout;
+  const rolls: { i: number; roll: number }[] = [];
+  players.forEach((p, i) => {
+    if (p.nationality !== 'Overseas' || p.isRetired || p.development?.trend === 'Breakout') return;
+    if (p.age - 1 > B.maxAge || (stats[p.id]?.matches ?? 0) >= 6) return;
+    if (hiddenCeiling(p, seed) - p.ratings.overall < B.minRoom) return;
+    const roll = playerRng(p.id, season, seed + 19)();
+    if (roll < B.chance) rolls.push({ i, roll });
+  });
+  rolls.sort((a, b) => a.roll - b.roll);
+  for (const { i } of rolls.slice(0, B.cap)) {
+    const p = players[i];
+    const r = playerRng(p.id, season, seed + 23);
+    const overall = Math.min(hiddenCeiling(p, seed), p.ratings.overall + r1(r, B.jump));
+    const d = overall - p.ratings.overall;
+    const potential = Math.max(p.ratings.potential, overall + 2);
+    const league = LEAGUE[p.country] ?? 'his home T20 league';
+    const bowlerish = p.role === 'Bowler' || (p.role === 'All-Rounder' && p.ratings.bowling > p.ratings.batting);
+    const note = bowlerish
+      ? `Breakout in ${league}: ${14 + Math.round(r() * 8)} wickets at an economy of ${(6.6 + r() * 1.1).toFixed(1)}`
+      : `Breakout in ${league}: ${360 + Math.round(r() * 160)} runs at SR ${150 + Math.round(r() * 30)}`;
+    players[i] = {
+      ...p,
+      ratings: {
+        ...p.ratings,
+        overall,
+        potential,
+        batting: bowlerish ? p.ratings.batting : Math.min(99, p.ratings.batting + d),
+        bowling: bowlerish ? Math.min(99, p.ratings.bowling + d) : p.ratings.bowling,
+      },
+      development: { ...(p.development ?? { matches: 0, perf: null }), season, trend: 'Domestic breakout', overallDelta: (p.development?.overallDelta ?? 0) + d, potentialDelta: potential - p.ratings.potential + (p.development?.potentialDelta ?? 0), note },
+    };
+    const k = deltas.findIndex((x) => x.playerId === p.id);
+    if (k >= 0) {
+      deltas[k] = { ...deltas[k], newOverall: overall, overallDelta: overall - deltas[k].previousOverall, potential, trend: 'Domestic breakout', progressionNote: note };
     }
   }
 }

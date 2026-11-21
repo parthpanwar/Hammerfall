@@ -222,6 +222,12 @@ export interface Player {
   development?: PlayerDevelopment;
   /** Hidden development profile; derived from the id when missing (old saves). */
   devProfile?: DevProfile;
+  /**
+   * Hidden true ceiling: the level he actually tops out at. Potential is the
+   * scouts' public estimate and most prospects fall short of it. Drawn per
+   * career at the first off-season; missing on old saves and new players.
+   */
+  ceiling?: number;
   /** In-season form/selection state (recentForm is its moving average). */
   seasonForm?: SeasonForm;
   recentForm: number; // 0-100

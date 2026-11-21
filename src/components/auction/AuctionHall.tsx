@@ -7,6 +7,7 @@
 // ============================================================
 
 import { prospectLabel, showDevelopmentNote } from '@/lib/engines/career/prospect-label';
+import { tierLabel } from '@/lib/engines/squad-tiers';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '@/lib/store/game-store';
 import { auctionTypeFor } from '@/lib/flow/season-flow';
@@ -332,6 +333,7 @@ export function AuctionHall() {
                         {p!.nationality === 'Overseas' && <OverseasTag />}
                         <span className="m-chip">{p!.status}</span>
                         <span className="m-chip">Age {p!.age}</span>
+                        <span className="m-chip" title="Where he fits in an IPL squad">{tierLabel(p!)}</span>
                         <PedigreeChip player={p!} season={currentSeason} />
                         {prospectLabel(p!) && <span className="m-chip">{prospectLabel(p!)}</span>}
                       </div>

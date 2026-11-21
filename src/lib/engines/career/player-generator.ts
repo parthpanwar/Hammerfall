@@ -64,8 +64,8 @@ const TIERS: Record<Tier, TierSpec> = {
 export const ROOKIE_CLASS = {
   indian: 26,
   overseas: 8,
-  wonderkids: [2, 3] as [number, number],
-  hotProspects: [6, 8] as [number, number],
+  wonderkids: [1, 2] as [number, number],
+  hotProspects: [4, 6] as [number, number],
   readyNow: [7, 9] as [number, number],
 };
 

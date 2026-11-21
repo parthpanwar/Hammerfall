@@ -103,8 +103,12 @@ const trend = (t: string) => updatedPlayers.filter((p) => p.development?.trend =
 assert(trend('Breakout').length >= 5, `a season produces breakouts (${trend('Breakout').length})`);
 assert(trend('Bust').length >= 1, `and some prospects bust (${trend('Bust').length})`);
 const domestic = trend('Domestic breakout');
-assert(domestic.length >= 8 && domestic.length <= 15, `8–15 domestic breakouts emerge (${domestic.map((p) => p.name).join(', ')})`);
-assert(domestic.every((p) => p.status === 'Uncapped' && p.nationality === 'Indian'), 'domestic breakouts are uncapped Indians');
+// Breakouts are rare now: up to 5 uncapped Indians (SMAT) and up to 5 young overseas players (their home T20 leagues).
+const domIndian = domestic.filter((p) => p.nationality === 'Indian');
+const domOverseas = domestic.filter((p) => p.nationality === 'Overseas');
+assert(domestic.length >= 3 && domestic.length <= 10, `3–10 domestic breakouts emerge (${domestic.map((p) => p.name).join(', ')})`);
+assert(domIndian.length <= 5 && domIndian.every((p) => p.status === 'Uncapped'), `Indian domestic breakouts are uncapped and rare (${domIndian.length})`);
+assert(domOverseas.length <= 5 && domOverseas.every((p) => p.age <= 27), `overseas breakouts are young internationals (${domOverseas.length})`);
 const callUps = updatedPlayers.filter((p) => p.development?.callUp);
 assert(callUps.length >= 1 && callUps.length <= 5, `India call up the season's best uncapped performers (${callUps.map((p) => p.name).join(', ')})`);
 assert(callUps.every((p) => p.status === 'Capped'), 'call-ups move to the capped market');

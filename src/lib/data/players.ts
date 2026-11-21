@@ -9,6 +9,7 @@ import type { IplRecord, Player } from '../types/game';
 import globalData from './global-player-database.json';
 import iplHistory from './ipl-history.json';
 import { remapRatingSpread } from './rating-distribution';
+import { OVERSEAS_RISING_STARS } from '../engines/career/overseas-pipeline';
 
 const IPL = (iplHistory as { players: Record<string, IplRecord> }).players;
 
@@ -26,12 +27,29 @@ export const RAW_GLOBAL_PLAYERS: Player[] = (globalData.players as Player[]).map
   return { ...p, ipl: { ...base, lastSquadSeason: p.currentFranchiseId ? DATA_SEASON : base.lastSeason } };
 });
 
+
+/** Starting corrections for players the source data undersells. */
+const START_FIXES: Record<string, { name?: string; overall?: number }> = {
+  // Listed by initials and rated off a thin T20 sample; he's an England T20 regular.
+  'hc-brook': { name: 'Harry Brook', overall: 80 },
+};
+
+/** Rising overseas stars start with a public potential that matches where they're headed. */
+function applyOverseasPipeline(p: Player): Player {
+  const fix = START_FIXES[p.id];
+  const star = OVERSEAS_RISING_STARS[p.id];
+  if (!fix && star === undefined) return p;
+  const overall = Math.max(p.ratings.overall, fix?.overall ?? 0);
+  const potential = Math.max(p.ratings.potential, star ?? 0, overall);
+  return { ...p, name: fix?.name ?? p.name, ratings: { ...p.ratings, overall, potential } };
+}
+
 /**
  * The database as the game uses it: the starting rating spread remapped once at
  * load (see rating-distribution.ts). RAW_GLOBAL_PLAYERS is the shipped data,
  * which saves made before the remap still diff against.
  */
-export const GLOBAL_PLAYERS: Player[] = remapRatingSpread(RAW_GLOBAL_PLAYERS);
+export const GLOBAL_PLAYERS: Player[] = remapRatingSpread(RAW_GLOBAL_PLAYERS).map(applyOverseasPipeline);
 
 /** Core starting players for the initial season franchises (193 players) */
 export const PLAYERS: Player[] = GLOBAL_PLAYERS.filter((p) => p.currentFranchiseId !== null || p.basePrice >= 100);

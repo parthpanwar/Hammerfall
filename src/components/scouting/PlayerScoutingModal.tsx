@@ -1,6 +1,7 @@
 'use client';
 
 import { prospectLabel } from '@/lib/engines/career/prospect-label';
+import { tierLabel } from '@/lib/engines/squad-tiers';
 import React, { useState } from 'react';
 import type { Player, Franchise } from '@/lib/types/game';
 import { FRANCHISES } from '@/lib/data/franchises';
@@ -86,6 +87,9 @@ export function PlayerScoutingModal({
                 )}
                 <span className="telemetry-badge-sm bg-[var(--m-raised)] text-[var(--m-dim)] border border-[var(--m-line)]">
                   {dossier.ageProfile.careerPhase}
+                </span>
+                <span className="telemetry-badge-sm bg-[var(--m-raised)] text-[var(--m-dim)] border border-[var(--m-line)]" title="Where he fits in an IPL squad">
+                  {tierLabel(player)}
                 </span>
                 {prospectLabel(player) && (
                   <span className="telemetry-badge-sm bg-[var(--m-gold)]/15 text-[var(--m-gold)] border border-[var(--m-gold)]/30">
