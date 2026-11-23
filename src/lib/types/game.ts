@@ -123,6 +123,7 @@ export interface PlayerStats {
 
 export type DevelopmentTrend =
   | 'Breakout'
+  | 'Resurgence'
   | 'Domestic breakout'
   | 'Rising'
   | 'Steady'

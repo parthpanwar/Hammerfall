@@ -101,7 +101,13 @@ export function executeSeasonAdvance(
     activePlayers,
     retiredPlayers,
     retirementRecords: newRetirements,
-  } = processSeasonRetirements(developedPlayers, gameState.playerSeasonStats, currentSeason, gameState.settings.seed);
+  } = processSeasonRetirements(
+    developedPlayers,
+    gameState.playerSeasonStats,
+    currentSeason,
+    gameState.settings.seed,
+    new Set(gameState.franchises.flatMap((f) => f.players.map((p) => p.id)))
+  );
 
   // 5. Rookie intake (~34: wonderkids, hot prospects, ready-now domestic performers, overseas)
   const newRookies = generateRookieDraftClass(nextSeason, gameState.settings.seed ?? 0, activePlayers);
@@ -161,7 +167,8 @@ export function executeSeasonAdvance(
         syncedFranchise,
         gameState.standings,
         currentSeason,
-        franchise.id === championId
+        franchise.id === championId,
+        gameState.playerSeasonStats
       );
 
       // Mega years: CPUs keep their squads into Retention Day, where every franchise

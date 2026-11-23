@@ -30,6 +30,7 @@ import { PROGRESSION_TUNING } from '../src/lib/engines/career/progression-tuning
 import { OVERSEAS_RISING_STARS, OVERSEAS_STALWARTS } from '../src/lib/engines/career/overseas-pipeline';
 import type { Player, PlayerSeasonStats } from '../src/lib/types/game';
 import { squadTier, type SquadTier } from '../src/lib/engines/squad-tiers';
+import { filterDecisionLogs } from '../src/lib/engines/cpu-gm/decision-logger';
 
 console.warn = () => {}; // zustand persist has no storage here
 const SEASONS = Number(process.env.SEASONS ?? 6); // two auction cycles
@@ -114,6 +115,9 @@ interface AuctionYouth {
   soldPct: number; // wonderkids + hot
   wonderkidPrices: number[];
   hotPrices: number[];
+  osUnsold: string[]; // overseas 82+ who went unsold
+  osMedian: number; // median price, overseas 80+ sold
+  indMedian: number; // median price, Indians 80+ sold
 }
 
 interface CareerResult {
@@ -130,6 +134,10 @@ interface CareerResult {
   risingGain: number; // rising stars: mean OVR S1 → S4
   stalwartChange: number; // stalwarts still active: mean OVR S1 → S4
   os85: [number, number]; // overseas 85+ (active) at S1, S4
+  resurgences: number[]; // per off-season
+  releases: { pos: number; n: number; big: number }[][]; // per mini off-season, per CPU team
+  midRisers: number; // 25–31, 74–81 at S1 who are 85+ by S4
+  midBest: number; // best S1→S4 gain among them
   retirements: number[];
   money: AuctionMoney[];
 }
@@ -241,9 +249,16 @@ function auctionYouth(season: number): AuctionYouth {
   }
   const tiers = pool.map((p) => ({ p, t: youthTier(p) }));
   const domestic = pool.filter((p) => p.development?.trend === 'Domestic breakout' && p.development.season === season).length;
+  const sessionId = S().auctionSession!.id;
   trackedAuction('Mini', true);
   const owner = new Map<string, Player>();
   for (const f of S().franchises) for (const p of f.players) owner.set(p.id, p);
+  if (process.env.DEBUG_OS) {
+    for (const p of pool.filter((x) => x.nationality === 'Overseas' && x.ratings.overall >= 82 && !owner.has(x.id))) {
+      const logs = filterDecisionLogs(sessionId, { playerId: p.id });
+      console.log(`  UNSOLD ${p.name} ${p.ratings.overall} base ₹${(p.basePrice / 100).toFixed(1)}: ` + logs.slice(0, 10).map((l) => `${l.franchiseId}:${l.decision} ${l.reason.slice(0, 70)}`).join(' || '));
+    }
+  }
   const youth = tiers.filter((x) => x.t === 'wonderkid' || x.t === 'hot');
   const sold = youth.filter((x) => owner.has(x.p.id));
   const price = (id: string) => owner.get(id)?.soldPrice ?? 0;
@@ -255,6 +270,10 @@ function auctionYouth(season: number): AuctionYouth {
     domestic,
     soldPct: youth.length ? sold.length / youth.length : 1,
     wonderkidPrices: tiers.filter((x) => x.t === 'wonderkid' && owner.has(x.p.id)).map((x) => price(x.p.id)),
+    osUnsold: pool.filter((p) => p.nationality === 'Overseas' && p.ratings.overall >= 82 && !owner.has(p.id)).map((p) => `${p.name} ${p.ratings.overall}`),
+    ...(process.env.DEBUG_OS && (console.log(`  [mini ${season}] teams: ` + S().franchises.map((f) => `${f.shortName} n${f.players.length} os${f.players.filter((p) => p.nationality === 'Overseas').length} ₹${(f.remainingPurse / 100).toFixed(1)}`).join(' | ')), {})),
+    osMedian: median(pool.filter((p) => p.nationality === 'Overseas' && p.ratings.overall >= 80 && owner.has(p.id)).map((p) => price(p.id))),
+    indMedian: median(pool.filter((p) => p.nationality === 'Indian' && p.ratings.overall >= 80 && owner.has(p.id)).map((p) => price(p.id))),
     hotPrices: tiers.filter((x) => x.t === 'hot' && owner.has(x.p.id)).map((x) => price(x.p.id)),
   };
 }
@@ -425,7 +444,7 @@ function runCareer(seed: number): CareerResult {
   megaRetention(seed);
   const firstMega = trackedAuction('Mega');
 
-  const res: CareerResult = { seed, bands: [], means: [], progress: [], auctions: [], youngRisers: 0, youngTier2: 0, youngTier3: 0, kidsCeiling: 0, osYoungGain: [], risingGain: 0, stalwartChange: 0, os85: [0, 0], retirements: [], money: [] };
+  const res: CareerResult = { seed, bands: [], means: [], progress: [], auctions: [], youngRisers: 0, youngTier2: 0, youngTier3: 0, kidsCeiling: 0, osYoungGain: [], risingGain: 0, stalwartChange: 0, os85: [0, 0], resurgences: [], releases: [], midRisers: 0, midBest: 0, retirements: [], money: [] };
   const s1 = new Map(S().allPlayers.map((p) => [p.id, p]));
   const os85 = () => S().allPlayers.filter((p) => !p.isRetired && p.nationality === 'Overseas' && p.ratings.overall >= 85).length;
   res.os85[0] = os85();
@@ -466,6 +485,15 @@ function runCareer(seed: number): CareerResult {
       res.risingGain = mean(delta(Object.keys(OVERSEAS_RISING_STARS)));
       res.stalwartChange = mean(delta(OVERSEAS_STALWARTS));
       res.os85[1] = os85();
+      const mid = [...s1.values()].filter((p) => !p.isRetired && p.age >= 25 && p.age <= 31 && p.ratings.overall >= 74 && p.ratings.overall <= 81 && reg.get(p.id) && !reg.get(p.id)!.isRetired);
+      res.midRisers = mid.filter((p) => reg.get(p.id)!.ratings.overall >= 85).length;
+      res.midBest = Math.max(0, ...mid.map((p) => reg.get(p.id)!.ratings.overall - p.ratings.overall));
+      if (detail) {
+        const named = ['venkatesh-iyer', 'devdutt-padikkal', 'jitesh-sharma', 't-natarajan'];
+        console.log('  Mid-career: ' + named.map((id) => [...s1.values()].find((p) => p.id === id || p.name.toLowerCase().replace(/ /g, '-') === id)).filter(Boolean).map((p) => `${p!.name} ${p!.ratings.overall}→${reg.get(p!.id)?.isRetired ? 'ret' : reg.get(p!.id)?.ratings.overall}`).join(', '));
+        const top = mid.map((p) => ({ p, d: reg.get(p.id)!.ratings.overall - p.ratings.overall })).sort((a, b) => b.d - a.d).slice(0, 6);
+        console.log('  Biggest mid-career climbs: ' + top.map(({ p, d }) => `${p.name} ${p.ratings.overall}→${p.ratings.overall + d}`).join(', '));
+      }
       if (detail) {
         const show = (ids: Iterable<string>) => [...ids].map((id) => `${(reg.get(id) ?? s1.get(id))?.name} ${s1.get(id)?.ratings.overall}→${reg.get(id)?.isRetired || !reg.get(id) ? 'ret' : reg.get(id)!.ratings.overall}`).join(', ');
         console.log(`  Rising stars: ${show(Object.keys(OVERSEAS_RISING_STARS))}`);
@@ -496,6 +524,7 @@ function runCareer(seed: number): CareerResult {
     const stats = S().playerSeasonStats;
     const before = new Map(S().allPlayers.map((p) => [p.id, p]));
     const next = S().currentSeason + 1;
+    const finish = new Map(S().standings.map((x) => [x.franchiseId, x.position]));
     advance();
     const retired = before.size - S().allPlayers.filter((p) => before.has(p.id)).length;
     res.retirements.push(retired);
@@ -505,6 +534,14 @@ function runCareer(seed: number): CareerResult {
       const after = new Map(S().allPlayers.map((p) => [p.id, p]));
       const g = [...before.values()].filter((b) => b.nationality === 'Overseas' && b.age <= 25 && b.ratings.overall >= 70 && after.get(b.id) && !after.get(b.id)!.isRetired).map((b) => after.get(b.id)!.ratings.overall - b.ratings.overall);
       res.osYoungGain.push(mean(g));
+      {
+        const rel = (S().careerState.transactions ?? []).filter((t) => t.season === S().currentSeason && t.type === 'Released');
+        if (rel.length) {
+          const pos = finish;
+          res.releases.push(S().franchises.map((f) => ({ pos: pos.get(f.id) ?? 5, n: rel.filter((t) => t.franchiseId === f.id).length, big: rel.filter((t) => t.franchiseId === f.id && t.amountLakhs >= 400).length })));
+        }
+      }
+      res.resurgences.push(S().allPlayers.filter((p) => p.development?.season === next && p.development.trend === 'Resurgence').length);
     }
     if (process.env.DIAG && detail) diag(before, stats, pool);
     res.progress.push(prog);
@@ -536,6 +573,9 @@ function runCareer(seed: number): CareerResult {
       const a = auctionYouth(S().currentSeason);
       res.auctions.push(a);
       if (detail) {
+        console.log(`  Mini ${a.season}: overseas 80+ median ₹${(a.osMedian / 100).toFixed(2)} Cr vs Indians 80+ ₹${(a.indMedian / 100).toFixed(2)} Cr · overseas 82+ unsold: ${a.osUnsold.join(', ') || 'none'}`);
+        const r = res.releases[res.releases.length - 1];
+        if (r) console.log(`  Releases before it (by finish): ${[...r].sort((x, y) => x.pos - y.pos).map((x) => `${x.pos}:${x.n}`).join(' ')} · ₹4 Cr+ contracts released ${r.reduce((t, x) => t + x.big, 0)}`);
         printMoney(moneyLog[moneyLog.length - 1]);
         console.log(
           `  Mini auction ${a.season}: wonderkids ${a.wonderkids} · hot prospects ${a.hot} · ready-now ${a.ready} · domestic breakouts ${a.domestic} · youth sold ${(a.soldPct * 100).toFixed(0)}% · wonderkid median ₹${(median(a.wonderkidPrices) / 100).toFixed(2)} Cr [${a.wonderkidPrices.map((p) => (p / 100).toFixed(1)).join(', ')}] · hot median ₹${(median(a.hotPrices) / 100).toFixed(2)} Cr`
@@ -638,11 +678,21 @@ const auctionsAll = all((r) => r.money);
 const osPer = mean(auctionsAll.map((m) => m.overseasPerSquad));
 check('Squads carry 7–8 overseas', osPer >= 6.8 && osPer <= 8, `mean ${osPer.toFixed(1)} per squad`);
 const t5 = mean(auctionsAll.map((m) => m.tierMix[5]));
-check('Tier 5 overseas backups: 2–4 per squad', t5 >= 2 && t5 <= 4, `mean ${t5.toFixed(1)} · T1 ${mean(auctionsAll.map((m) => m.tierMix[1])).toFixed(1)} · T2 ${mean(auctionsAll.map((m) => m.tierMix[2])).toFixed(1)} · T3 ${mean(auctionsAll.map((m) => m.tierMix[3])).toFixed(1)} · T4 ${mean(auctionsAll.map((m) => m.tierMix[4])).toFixed(1)}`);
+check('Tier 5 overseas backups: 1–4 per squad', t5 >= 1 && t5 <= 4, `mean ${t5.toFixed(1)} · T1 ${mean(auctionsAll.map((m) => m.tierMix[1])).toFixed(1)} · T2 ${mean(auctionsAll.map((m) => m.tierMix[2])).toFixed(1)} · T3 ${mean(auctionsAll.map((m) => m.tierMix[3])).toFixed(1)} · T4 ${mean(auctionsAll.map((m) => m.tierMix[4])).toFixed(1)}`);
 const t5p = auctionsAll.flatMap((m) => m.tier5Prices);
 check('Tier 5 bought cheap (median ≤ ₹2 Cr)', median(t5p) <= 200, `median ₹${(median(t5p) / 100).toFixed(2)} Cr (n=${t5p.length})`);
+const rs = all((r) => r.resurgences.slice(0, 3));
+check('Mid-career resurgences per off-season 3–10', mean(rs) >= 3 && mean(rs) <= 10, `mean ${mean(rs).toFixed(1)} [${rs.join(', ')}]`);
+check('Mid-career (25–31, 74–81) reaching 85+ by S4: 1–4', mean(results.map((r) => r.midRisers)) >= 1 && mean(results.map((r) => r.midRisers)) <= 4, `mean ${mean(results.map((r) => r.midRisers)).toFixed(1)} [${results.map((r) => r.midRisers).join(', ')}], best climb +${mean(results.map((r) => r.midBest)).toFixed(1)}`);
 const ret = all((r) => r.retirements);
-check('Retirements per off-season (info)', true, `mean ${mean(ret).toFixed(1)} [${ret.join(', ')}]`);
+check('Retirements per off-season 3–7', ret.every((r) => r <= 7) && mean(ret) >= 3, `mean ${mean(ret).toFixed(1)} [${ret.join(', ')}]`);
+const relAll = all((r) => r.releases.flat());
+const relTop = relAll.filter((x) => x.pos <= 4);
+const relBottom = relAll.filter((x) => x.pos >= 8);
+check('Mini releases: 4–8 per team, bottom sides more', mean(relAll.map((x) => x.n)) >= 4 && mean(relAll.map((x) => x.n)) <= 8 && mean(relBottom.map((x) => x.n)) > mean(relTop.map((x) => x.n)), `mean ${mean(relAll.map((x) => x.n)).toFixed(1)} · top 4 ${mean(relTop.map((x) => x.n)).toFixed(1)} · bottom 3 ${mean(relBottom.map((x) => x.n)).toFixed(1)} · ₹4 Cr+ released per mini ${mean(all((r) => r.releases.map((t) => t.reduce((a, x) => a + x.big, 0)))).toFixed(1)}`);
+const osU = au.flatMap((a) => a.osUnsold);
+check('Mini: overseas 82+ unsold ≤ 1 per auction', osU.length / Math.max(1, au.length) <= 1, `${(osU.length / Math.max(1, au.length)).toFixed(1)} per mini${osU.length ? ' — ' + osU.slice(0, 6).join(', ') : ''}`);
+check('Mini: overseas 80+ cost more than Indians 80+', median(au.map((a) => a.osMedian)) >= median(au.map((a) => a.indMedian)), `overseas ₹${(median(au.map((a) => a.osMedian)) / 100).toFixed(2)} Cr vs Indian ₹${(median(au.map((a) => a.indMedian)) / 100).toFixed(2)} Cr`);
 
 for (const [name, ok, detail] of rows) console.log(`${ok ? '✅ PASS' : '❌ FAIL'}  ${name.padEnd(48)} ${detail}`);
 console.log(`\n${rows.filter((r) => r[1]).length}/${rows.length} criteria pass · ${((Date.now() - t0) / 1000).toFixed(0)}s`);

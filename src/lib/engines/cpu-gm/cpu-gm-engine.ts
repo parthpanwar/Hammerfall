@@ -417,15 +417,21 @@ export function decideCPUBid(
   const overseasNow = franchise.players.filter((p) => p.nationality === 'Overseas');
   const overseasStarters = overseasNow.filter((p) => squadTier(p) !== 5);
   const B = PROGRESSION_TUNING.market.overseasBackup;
-  const overseasBackup =
+  const openOverseasSlot =
     player.nationality === 'Overseas' &&
-    squadTier(player) === 5 &&
     overseasNow.length < (franchise.maxOverseas ?? 8) &&
     overseasStarters.length >= B.minStarters &&
+    franchise.players.length < (franchise.maxSquadSize ?? 25);
+  const overseasBackup =
+    openOverseasSlot &&
+    squadTier(player) === 5 &&
     overseasNow.length - overseasStarters.length < B.maxHeld &&
-    franchise.players.length < (franchise.maxSquadSize ?? 25) &&
-    (session.auctionType !== 'Mega' || auctionProgress(session) >= B.megaFrom) &&
+    auctionProgress(session) >= (session.auctionType === 'Mega' ? B.megaFrom : B.miniFrom) &&
     ((player.ratings.overall >= B.minOvr && overseasStarters.some((s) => sameSlot(s, player))) || isOverseasGroomer(player));
+  // A quality overseas player (80+) who wouldn't start is still worth a slot as
+  // cover — nobody leaves an 85-rated international unsold with a slot open.
+  const overseasQualityCover = openOverseasSlot && player.ratings.overall >= B.qualityMinOvr && !overseasBackup;
+  const overseasDepthBuy = overseasBackup || overseasQualityCover;
 
   // If team has zero tactical need and squad has fulfilled minimum squad size, pass
   // Full on roles and no better than what's there: pass. A clear XI upgrade is
@@ -440,7 +446,7 @@ export function decideCPUBid(
       franchise.remainingPurse >= D.minPurse &&
       player.ratings.overall >= D.minOvr &&
       franchise.players.length < D.maxSquad);
-  if (tacticalNeed === 0 && xiImprovement === 0 && !devPick && !cashRichQuality && !overseasBackup && franchise.players.length >= franchise.minSquadSize) {
+  if (tacticalNeed === 0 && xiImprovement === 0 && !devPick && !cashRichQuality && !overseasDepthBuy && franchise.players.length >= franchise.minSquadSize) {
     const reason = 'No tactical role deficit; squad depth satisfied.';
     recordDecisionLog(session.id, {
       ...logBase,
@@ -464,7 +470,8 @@ export function decideCPUBid(
   const progress = auctionProgress(session);
   // Overseas buying is paced across the auction: the eight slots are not all spent
   // in the opening sets (clear stars excepted).
-  const overseasAllowed = Math.min(franchise.maxOverseas ?? 8, 4 + Math.floor(progress * 10));
+  // (Minis are small and short: no pacing, a team just needs an open slot.)
+  const overseasAllowed = session.auctionType === 'Mini' ? franchise.maxOverseas ?? 8 : Math.min(franchise.maxOverseas ?? 8, 4 + Math.floor(progress * 10));
   // Late in a mega, a team still holding real money carries a 7th/8th quality
   // overseas player as cover rather than bank the purse.
   const overseasCover =
@@ -476,7 +483,7 @@ export function decideCPUBid(
   if (
     player.nationality === 'Overseas' &&
     !overseasCover &&
-    !overseasBackup &&
+    !overseasDepthBuy &&
     ((xiImprovement === 0 && (overseasHeld >= 6 || progress < 0.55)) || (overseasHeld >= overseasAllowed && xiImprovement < 18))
   ) {
     const reason = `Would not make the XI's four overseas spots (${overseasHeld} overseas held); saving the slot.`;
@@ -488,7 +495,7 @@ export function decideCPUBid(
   // genuine upgrades (real minis end around 21–23 players, megas 23–25).
   // A team still sitting on ₹8 Cr+ keeps adding useful players rather than bank it.
   const depthCeiling = session.auctionType === 'Mini' ? (franchise.remainingPurse >= 800 ? 24 : 22) : franchise.remainingPurse >= D.minPurse ? D.maxSquad : 24;
-  if (xiImprovement === 0 && franchise.players.length >= depthCeiling && !(devPick && franchise.players.length < 24) && !overseasBackup) {
+  if (xiImprovement === 0 && franchise.players.length >= depthCeiling && !(devPick && franchise.players.length < 24) && !overseasDepthBuy) {
     const reason = `Squad already ${franchise.players.length} deep; saving purse for upgrades.`;
     recordDecisionLog(session.id, { ...logBase, maxValuationLakhs: 0, decision: 'PASS', reason });
     return { bid: false, maxBid: 0, reason, tacticalRoles, intelligenceDossier: dossier };
@@ -506,9 +513,10 @@ export function decideCPUBid(
   // 4. Calculate Advanced Spending Limit with Data-Driven Valuation
   let spendingLimit = calculateAdvancedSpendingLimit(franchise, player, session, dossier, difficulty);
   // A backup is bought as a backup: cheap, a little more for a young international with a future.
-  if (overseasBackup && xiImprovement === 0) {
+  // (In a mini, quality overseas players are the prize: bid them up to their value.)
+  if (overseasDepthBuy && xiImprovement === 0 && !(overseasQualityCover && session.auctionType === 'Mini')) {
     const scale = (franchise.totalPurse || 12000) / 12000;
-    const cap = Math.round((isOverseasGroomer(player) ? B.groomerCap : B.coverCap) * scale);
+    const cap = Math.round((overseasQualityCover ? B.qualityCap : isOverseasGroomer(player) ? B.groomerCap : B.coverCap) * scale);
     spendingLimit = Math.max(player.basePrice, Math.min(Math.max(spendingLimit, player.basePrice + 20), cap));
   }
 

@@ -89,6 +89,13 @@ assert(up.ratings.overall - 76 >= 3, `a 24-year-old 76/86 with a 520-run season 
 const flop = progressPlayerAttributes(riser, stat(riser, 12, 140, 112), 2028).updatedPlayer;
 assert(flop.ratings.potential < up.ratings.potential, `a poor season lowers the projected ceiling (${flop.ratings.potential} vs ${up.ratings.potential})`);
 
+// Mid-career resurgence: an established Indian who keeps producing keeps climbing.
+let vi = byName('Venkatesh Iyer');
+const vi0 = vi.ratings.overall;
+for (let y = 0; y < 3; y++) vi = progressPlayerAttributes(vi, stat(vi, 14, 540, 168), 2028 + y, 42).updatedPlayer;
+assert(vi.ratings.overall >= vi0 + 8 && vi.development?.trend === 'Resurgence', `three great seasons lift Venkatesh Iyer ${vi0} → ${vi.ratings.overall} (${vi.development?.trend})`);
+assert(vi.ratings.potential > vi.ratings.overall, `and his potential moves with him (${vi.ratings.potential})`);
+
 // Whole league, one simulated season of output.
 const stats: Record<string, PlayerSeasonStats> = {};
 let i = 0;

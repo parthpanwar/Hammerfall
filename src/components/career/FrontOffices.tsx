@@ -63,6 +63,7 @@ export function FrontOfficesPanel({ franchises, humanFranchiseId }: { franchises
 
 const TREND_TONE: Record<string, string> = {
   Breakout: 'var(--m-green)',
+  Resurgence: 'var(--m-green)',
   'Domestic breakout': 'var(--m-purple)',
   Bust: 'var(--m-red)',
   Stalled: 'var(--m-gold)',
@@ -76,6 +77,7 @@ export function DevelopmentWatch({ players, franchises, season }: { players: Pla
   const groups: { title: string; items: Player[] }[] = [
     { title: 'India call-ups', items: fresh.filter((p) => p.development!.callUp) },
     { title: 'Breakouts', items: fresh.filter((p) => p.development!.trend === 'Breakout').sort((a, b) => b.development!.overallDelta - a.development!.overallDelta) },
+    { title: 'Resurgences', items: fresh.filter((p) => p.development!.trend === 'Resurgence').sort((a, b) => b.development!.overallDelta - a.development!.overallDelta) },
     { title: 'Domestic breakouts (auction gems)', items: fresh.filter((p) => p.development!.trend === 'Domestic breakout') },
     { title: 'Busts & stalled prospects', items: fresh.filter((p) => p.development!.trend === 'Bust' || (p.development!.trend === 'Stalled' && p.ratings.potential >= 78)) },
   ];

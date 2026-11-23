@@ -182,7 +182,8 @@ export function baseMarketValue(p: Player, season: number): number {
   const ped = iplPedigree(p, season);
   // Last season's IPL breakouts: teams chase the player everyone just watched.
   // (Domestic breakouts carry their own premium in the pedigree.)
-  const bump = p.development?.trend === 'Breakout' && p.development.season >= season - 1 ? PROGRESSION_TUNING.market.breakoutBump : 1;
+  const hot = p.development?.trend === 'Breakout' || p.development?.trend === 'Resurgence';
+  const bump = hot && p.development!.season >= season - 1 ? PROGRESSION_TUNING.market.breakoutBump : 1;
   const v = Math.max(p.basePrice, Math.round(auctionRatingValue(p) * ped.multiplier * bump));
   if (baseCache.size > 20000) baseCache.clear();
   baseCache.set(key, v);
@@ -270,8 +271,13 @@ function inflationWeight(p: Player, value: number): number {
   return unproven ? w * M.unprovenInflation : w;
 }
 
+/** Quality overseas players are the prize of a mini auction. */
+function miniOverseasPremium(p: Player, auctionType: AuctionSession['auctionType']): number {
+  return auctionType === 'Mini' && p.nationality === 'Overseas' && p.ratings.overall >= 80 ? PROGRESSION_TUNING.market.miniOverseasPremium : 1;
+}
+
 export function auctionMarketValue(p: Player, session: Pick<AuctionSession, 'seasonYear' | 'auctionType' | 'id' | 'priceIndex' | 'franchises' | 'playerPool'>): number {
-  const base = baseMarketValue(p, session.seasonYear);
+  const base = baseMarketValue(p, session.seasonYear) * miniOverseasPremium(p, session.auctionType);
   const idx = sessionPriceIndex(session as AuctionSession);
   return Math.max(p.basePrice, Math.round((base * Math.pow(idx, inflationWeight(p, base))) / 5) * 5);
 }
@@ -285,7 +291,7 @@ export function auctionMarketValue(p: Player, session: Pick<AuctionSession, 'sea
 export function ratingPriceCeiling(p: Player, session: Pick<AuctionSession, 'seasonYear' | 'auctionType' | 'id' | 'priceIndex' | 'franchises' | 'playerPool'>): number {
   const T = PROGRESSION_TUNING.market;
   const lifted = { ...p, ratings: { ...p.ratings, overall: p.ratings.overall + T.ceilingOvrMargin } };
-  const base = auctionRatingValue(lifted);
+  const base = auctionRatingValue(lifted) * miniOverseasPremium(p, session.auctionType);
   const idx = Math.max(1, sessionPriceIndex(session as AuctionSession));
   return Math.max(p.basePrice, Math.round(base * Math.pow(idx, inflationWeight(p, base)) * T.ceilingMultiplier));
 }

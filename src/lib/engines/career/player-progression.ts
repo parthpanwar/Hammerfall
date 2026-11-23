@@ -209,6 +209,20 @@ export function progressPlayerAttributes(
     if (matches === 0 && !trajectory.isOver35Exempt) change = Math.min(change, luck > 0.5 ? 0 : -(age >= 30 ? T.idleVeteranLoss30 : T.idleVeteranLoss));
   }
 
+  // ---- Mid-career resurgence: a big IPL season from an established player ----
+  const RS = T.resurgence;
+  let resurgent = false;
+  if (player.nationality === 'Indian' && iplPerf !== null && iplMatches >= RS.minMatches && previousOverall <= RS.maxOvr && age >= RS.minAge && age <= RS.maxAge && iplPerf >= RS.gain[RS.gain.length - 1].minPerf) {
+    const base = lookup(RS.gain, (r) => iplPerf >= r.minPerf, RS.gain[RS.gain.length - 1]).gain;
+    const g = Math.min(age >= RS.olderFrom ? RS.olderCap : 99, base + (luck > 0.6 ? 1 : luck < -0.6 ? -1 : 0));
+    if (g > change) {
+      change = g;
+      resurgent = true;
+      bust = false;
+      potentialChange = Math.max(potentialChange, 0);
+    }
+  }
+
   change = clamp(change, -5, 10);
   const newOverall = clamp(applyGain(previousOverall, change, rng), 50, 99);
   const d = newOverall - previousOverall;
@@ -234,10 +248,17 @@ export function progressPlayerAttributes(
   newPotential = Math.max(newOverall, Math.min(P.cap, Math.max(newOverall + floor, newPotential)));
   // The public projection never sits below what he really is going to be.
   if (newPotential < ceiling && growthPath) newPotential = Math.min(P.cap, ceiling);
+  // A resurgent player's ceiling moves with him: he can go again next year.
+  if (resurgent) {
+    newPotential = Math.max(newPotential, Math.min(P.cap, newOverall + (newAge <= 30 ? RS.potentialLead.upTo30 : RS.potentialLead.older)));
+    ceiling = Math.max(ceiling, newPotential);
+  }
   const potentialDelta = newPotential - potential;
 
   const trend: DevelopmentTrend = bust
     ? 'Bust'
+    : resurgent && d >= 2 && !growthPath
+    ? 'Resurgence'
     : matches >= T.breakoutTag.minMatches &&
       newAge <= T.breakoutTag.maxNewAge &&
       ((d >= T.breakoutTag.bigGain && p0 >= T.breakoutTag.bigGainMinPerf) || (d >= T.breakoutTag.gain && (p0 >= T.breakoutTag.minPerf || potentialDelta >= T.breakoutTag.potGain)))
@@ -356,6 +377,8 @@ function developmentNote(trend: DevelopmentTrend, p: Player, s: PlayerSeasonStat
     case 'Breakout':
       if (p.seasonForm?.blooded && line) return `Earned a place in the XI mid-season and kept it (${line}): ceiling raised`;
       return line ? `Breakout season (${line}): ceiling raised` : 'Big leap in the nets: ceiling raised';
+    case 'Resurgence':
+      return line ? `Career-best season at ${p.age} (${line}): back among the IPL's best` : 'Career-best season: back among the IPL\'s best';
     case 'Rising':
       if (p.seasonForm?.blooded && line) return `Earned a place in the XI after a mid-season debut (${line})`;
       return line ? `Kept improving (${line})` : s && s.matches === 0 ? 'Kept improving in the nets and domestic cricket' : 'Kept improving';

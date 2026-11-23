@@ -62,6 +62,30 @@ export const PROGRESSION_TUNING = {
   /** Older players without IPL cricket: no visible leap. */
   benchCapOlder: 3,
 
+  // ---- Mid-career resurgence: an established player who has a big IPL season ----
+  // (Venkatesh Iyer, Padikkal, Jitesh Sharma) climbs and keeps climbing while he
+  // keeps producing. Evidence-driven, so it ignores the prospect ceiling.
+  resurgence: {
+    /** Indians only: overseas players have their own pipeline (stalwarts, rising stars). */
+    minAge: 26,
+    maxAge: 34,
+    minMatches: 8,
+    /** Already-elite players don't resurge; they are the established stars. */
+    maxOvr: 85,
+    /** Raw gain by IPL season output (elite compression still applies above 84). */
+    gain: [
+      { minPerf: 1.2, gain: 5 },
+      { minPerf: 0.95, gain: 4 },
+      { minPerf: 0.7, gain: 3 },
+      { minPerf: 0.5, gain: 2 },
+    ],
+    /** From this age the climb is gentler. */
+    olderFrom: 32,
+    olderCap: 3,
+    /** Potential rises with him, staying this far ahead of the new rating. */
+    potentialLead: { upTo30: 2, older: 1 },
+  },
+
   // ---- Hidden ceiling: potential is the scouts' guess, the ceiling is the truth ----
   ceiling: {
     /** Only players with this much headroom and at most this age get a drawn ceiling. */
@@ -210,8 +234,13 @@ export const PROGRESSION_TUNING = {
     /** Bid ceiling: rating-curve price at (current overall + margin) × multiplier × inflation. */
     ceilingOvrMargin: 3,
     ceilingMultiplier: 1.0,
+    /**
+     * Mini auctions: the best Indians are kept, not released, so quality overseas
+     * players are the prize and go for more (× this, for 80+ overseas).
+     */
+    miniOverseasPremium: 1.45,
     /** Tier-5 overseas backups: cover for a starter or a young international to groom. */
-    overseasBackup: { minStarters: 3, maxHeld: 3, minOvr: 72, megaFrom: 0.5, coverCap: 150, groomerCap: 300 },
+    overseasBackup: { minStarters: 3, maxHeld: 3, minOvr: 72, megaFrom: 0.5, miniFrom: 0.5, coverCap: 150, groomerCap: 300, qualityMinOvr: 80, qualityCap: 600 },
     /** Mega price index never opens below this. */
     megaIndexFloor: 1.2,
     /** Late in a mega, a team still holding this much keeps buying useful squad players (OVR ≥ minOvr). */

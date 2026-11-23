@@ -106,11 +106,22 @@ export function calculateRetirementProbability(
  * Processes retirements across all active players at the conclusion of a season.
  * Retired players are marked and preserved in retirement records.
  */
+/** Retirements per off-season are capped: the IPL loses a handful of names a year (3–7), not dozens. */
+export const RETIREMENT_CAP = [3, 7] as const;
+/** A player under contract only walks away from IPL money at this age. */
+export const SQUAD_RETIREMENT_AGE = 40;
+
+/**
+ * @param squadIds players in an IPL squad this season. They are being paid, so
+ *   they play on; only the 40+ consider stopping. Everyone else is a free agent
+ *   (unsold or released), and those are the ones who call it a day.
+ */
 export function processSeasonRetirements(
   players: Player[],
   seasonStats: Record<string, PlayerSeasonStats>,
   seasonYear: number,
-  randomSeedMultiplier: number = 1.0
+  randomSeedMultiplier: number = 1.0,
+  squadIds?: Set<string>
 ): {
   activePlayers: Player[];
   retiredPlayers: Player[];
@@ -120,16 +131,33 @@ export function processSeasonRetirements(
   const retiredPlayers: Player[] = [];
   const retirementRecords: RetirementRecord[] = [];
 
+  // Roll everyone, then keep the oldest few who decided to stop.
+  const decided: { i: number; reason: RetirementRecord['reason'] }[] = [];
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
+    if (player.isRetired) continue;
     const stats = seasonStats[player.id];
-    const { probability, reason } = calculateRetirementProbability(player, stats);
-
+    let { probability, reason } = calculateRetirementProbability(player, stats);
+    if (squadIds?.has(player.id)) {
+      if (player.age < SQUAD_RETIREMENT_AGE) probability = 0;
+      else probability *= 0.5;
+    }
     // Deterministic pseudo-random roll using player ID hash and seed
     const hash = simpleStringHash(`${player.id}-${seasonYear}-${randomSeedMultiplier}`);
     const roll = (hash % 1000) / 1000.0;
+    if (roll < probability) decided.push({ i, reason });
+  }
+  const picked = new Map(
+    decided
+      .sort((a, b) => players[b.i].age - players[a.i].age || players[b.i].ratings.overall - players[a.i].ratings.overall)
+      .slice(0, RETIREMENT_CAP[0] + (simpleStringHash(`retirements-${seasonYear}-${randomSeedMultiplier}`) % (RETIREMENT_CAP[1] - RETIREMENT_CAP[0] + 1)))
+      .map((d) => [d.i, d.reason] as const)
+  );
 
-    const willRetire = roll < probability;
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
+    const reason = picked.get(i) ?? 'Age';
+    const willRetire = picked.has(i);
 
     if (willRetire) {
       const retiredPlayer: Player = {
